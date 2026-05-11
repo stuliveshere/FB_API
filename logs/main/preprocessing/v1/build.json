@@ -1,0 +1,146 @@
+{
+  "timestamp": "2026-04-28T11:48:36",
+  "version": "v1",
+  "source_path": "/data/ProjectDatasetFacebookAU/",
+  "output_path": "/user/s3348393/main/preprocessing/v1/parquet",
+  "window_start": "2021-11-21",
+  "window_end": "2022-05-21",
+  "raw_rows": 39584139,
+  "raw_columns": 28,
+  "final_rows": 3128023,
+  "final_columns": 28,
+  "unique_ads": 87614,
+  "earliest_creation": "2021-11-21",
+  "latest_creation": "2022-05-21",
+  "earliest_snapshot": "2021-11-21",
+  "latest_snapshot": "2023-08-18",
+  "population": {
+    "bylines": {
+      "populated": 3116487,
+      "pct": 99.6
+    },
+    "page_name": {
+      "populated": 3128023,
+      "pct": 100.0
+    },
+    "creative_bodies": {
+      "populated": 3128023,
+      "pct": 100.0
+    },
+    "creative_link_captions": {
+      "populated": 3128023,
+      "pct": 100.0
+    },
+    "spend_mid": {
+      "populated": 3128023,
+      "pct": 100.0
+    },
+    "impressions_mid": {
+      "populated": 3107840,
+      "pct": 99.4
+    },
+    "audience_size_mid": {
+      "populated": 127347,
+      "pct": 4.1
+    },
+    "delivery_by_region": {
+      "populated": 2726996,
+      "pct": 87.2
+    },
+    "demographic_distribution": {
+      "populated": 2726996,
+      "pct": 87.2
+    },
+    "languages": {
+      "populated": 260388,
+      "pct": 8.3
+    },
+    "snapshot_date": {
+      "populated": 3128023,
+      "pct": 100.0
+    }
+  },
+  "top_bylines": [
+    [
+      "Greenpeace Australia Pacific",
+      4854
+    ],
+    [
+      "Australian Labor Party",
+      3376
+    ],
+    [
+      "Access",
+      3202
+    ],
+    [
+      "Liberal Party of Australia",
+      3023
+    ],
+    [
+      "Amnesty International Australia",
+      2037
+    ],
+    [
+      "Solutions for Australia",
+      1729
+    ],
+    [
+      "Australian Conservation Foundation",
+      1662
+    ],
+    [
+      "Australian Automobile Association",
+      1359
+    ],
+    [
+      "Queensland Labor",
+      1173
+    ],
+    [
+      "The Pharmacy Guild of Australia",
+      1017
+    ],
+    [
+      "Climate 200",
+      987
+    ],
+    [
+      "Thrive By Five",
+      982
+    ],
+    [
+      "ABC Friends",
+      863
+    ],
+    [
+      "Animal Justice Party",
+      833
+    ],
+    [
+      "The Greens NSW",
+      809
+    ],
+    [
+      "Liberal Party of Australia (Victorian Division)",
+      780
+    ],
+    [
+      "The Wilderness Society",
+      681
+    ],
+    [
+      "Australia for UNHCR",
+      629
+    ],
+    [
+      "South Australian Liberals",
+      613
+    ],
+    [
+      "Oxfam Australia",
+      609
+    ]
+  ],
+  "duration_seconds": 198.7
+}
