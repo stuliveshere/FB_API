@@ -154,6 +154,9 @@ derby.log
 *.swp
 *.swo
 
+# Claude Code workspace
+.claude/
+
 # OS
 .DS_Store
 Thumbs.db
