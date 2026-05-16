@@ -1,0 +1,503 @@
+% =============================================================================
+% DATA7201 Data Analytics at Scale (2026) — Project Report
+% Facebook Ad Library API — third-party advertisers around the 2022 federal
+% election.
+% =============================================================================
+
+\documentclass[11pt,a4paper]{article}
+
+% ----- packages -------------------------------------------------------------
+\usepackage[a4paper, margin=2.5cm]{geometry}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{float}
+
+\usepackage{hyperref}
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!50!black,
+  urlcolor=blue!50!black,
+  citecolor=blue!50!black,
+}
+
+\usepackage{listings}
+\usepackage{xcolor}
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  breaklines=true,
+  frame=single,
+  showstringspaces=false,
+  keywordstyle=\color{blue!50!black},
+  commentstyle=\color{green!40!black},
+  stringstyle=\color{red!50!black},
+}
+
+\usepackage[backend=biber,style=numeric,sorting=none]{biblatex}
+\addbibresource{references.bib}
+
+% ----- title -----------------------------------------------------------------
+\title{Third-Party Political Advertising on Facebook Around the 2022 Australian Federal Election\\
+\large DATA7201 Data Analytics at Scale --- Project Report}
+\author{Student Number: s3348393}
+\date{\today}
+
+% =============================================================================
+\begin{document}
+\maketitle
+
+% -----------------------------------------------------------------------------
+% Structured abstract (not counted towards word limit)
+% -----------------------------------------------------------------------------
+\begin{abstract}
+\noindent\textbf{Background.} The Facebook Ad Library publishes every
+sponsored political advertisement targeted at Australian users. This report
+analyses four years of those ads from March 2020 to February 2024. The
+focus is third-party political advertising around the May 2022 Australian
+federal election.
+
+\noindent\textbf{Methods.} Approximately 320~GB of JSON across 4{,}500
+daily snapshots were ingested with PySpark on YARN. The data was
+deduplicated and windowed to six months either side of election day, which
+reduced the corpus from 40~million to 5.7~million ads. A pandas UDF tagged
+candidate, party, and government advertising via token matching against
+the Australian Electoral Commission candidate roll. The remaining ads were
+clustered with Latent Dirichlet Allocation ($k=20$) and hand-labelled.
+Commercial clusters were removed, which left about 95{,}000 advocacy ads.
+The corpus was then analysed in two ways: a deterministic temporal
+classifier and a hashtag-supervised logistic-regression text classifier.
+
+\noindent\textbf{Findings.} Third-party advertising splits into four
+temporal patterns: \texttt{election\_only}, \texttt{transitional},
+\texttt{ongoing}, and \texttt{off\_campaign}. Election-only advertisers
+dominate by count and look similar to US PAC behaviour. Greenpeace
+Australia dominates the ongoing tier by spend. The content classifier
+identifies advertisers whose messaging pivoted to electoral themes around
+polling day even when their spend pattern did not. The Australian
+Christian Lobby shows the largest content shift.
+
+\noindent\textbf{Conclusions.} Combining temporal and content methods is
+needed to classify third-party political advertising. Neither metric alone
+is enough. The infrastructure choices of PySpark, HDFS, and MLlib were
+justified by the dataset scale and by the joins required for deduplication
+and classification.
+
+\end{abstract}
+
+% -----------------------------------------------------------------------------
+% Word count statement
+% -----------------------------------------------------------------------------
+\noindent\textbf{Word count (excluding abstract, table of contents, tables,
+figures, captions, references and appendix):} \textit{TBC — fill in once body is final.}
+
+\newpage
+\tableofcontents
+\newpage
+
+% =============================================================================
+\section{Introduction}
+% =============================================================================
+Winning elections requires reaching voters, and there are many ways to do this.
+Online advertising is attractive because it allows a message to reach a wide
+audience with minimal effort. Designing an ad, placing it online, and paying
+the bill is easier than traditional methods such as door-knocking or physical
+signage.
+
+Political advertising is not limited to political parties. Third-party groups
+also participate in election campaigns, and studying digital advertising
+allows us to examine who these groups are, what they spend, and when they
+choose to spend it. The Facebook Ad Library API publishes every sponsored
+political post targeted at Australian users from March 2020 to February 2024,
+covering three major political events: the COVID-19 pandemic response, the
+May 2022 federal election, and the October 2023 Voice to Parliament
+referendum. This report focuses on the 2022 federal election.
+
+At approximately 320~GB of JSON files, the dataset cannot be analysed on a
+conventional workstation. A single machine cannot hold it in memory, and the
+joins required for deduplication and classification would be prohibitively
+slow. Distributed analytics frameworks are the natural fit. PySpark is well
+suited to this task because it distributes both storage and computation
+across a cluster, loads data lazily, and its DataFrame API supports
+efficient analysis across thousands of files
+\cite{zaharia2016apache,armbrust2015sparksql}. We also leverage Spark MLlib
+for both the unsupervised topic modelling (LDA) and the supervised text
+classifier (logistic regression with TF--IDF features)
+\cite{meng2016mllib}.
+
+The investigation was split into three steps: data ingestion and preparation,
+exploratory analysis, and election-window analysis. These are discussed in
+the following sections.
+
+% =============================================================================
+\section{Dataset Analytics}
+% =============================================================================
+
+\subsection{Data ingestion and preparation}
+
+The data consists of approximately 4{,}500 JSON files containing around 40
+million rows spanning February 2020 to March 2024. Each file is a snapshot of
+all Australian political advertisements active at that moment, so the same
+ad appears in multiple files. Each row represents a single ad with around 25
+columns covering the ad purchaser, Facebook page, creative text, spend, and
+impressions. The schema varies over time, with a notable change in
+June~2022 and another in August~2023; data becomes sparse after August~2023.
+
+A null-fraction analysis was performed to visualise the schema drift.
+Automatic schema inference collected the superset of all fields across the
+dataset, and the per-column null fraction by month was plotted as a heatmap
+(Figure~\ref{fig:null-heatmap}). Columns were then modified and merged to
+produce a consistent schema across the full date range. The numeric fields
+were stored as nested structs of string-typed lower and upper bounds; these
+were cast to numeric types and a midpoint was computed for each field,
+allowing downstream aggregations to work on a single value.
+
+Deduplication was achieved by extracting the snapshot date from each
+filename and using it to sort snapshots chronologically, grouped by ad ID. A
+\texttt{row\_number()} window operation tagged each row with an
+\texttt{ad\_seq\_no} where \texttt{1} indicates the most recent snapshot per
+ad. Filenames used inconsistent date conventions (some 7-digit, some
+8-digit) and required special handling. The cleaned data was windowed to
+six months either side of the May 2022 federal election and written as
+Parquet to HDFS, reducing the corpus from approximately 40~million to
+5.7~million rows.
+
+\begin{figure}[H]
+  \centering
+  \fbox{\begin{minipage}[c][0.32\textheight][c]{0.95\textwidth}
+    \centering\itshape\small
+    [Figure placeholder]\\[0.5em]
+    null-fraction heatmap (column $\times$ month)\\
+    source: notebook 01, cell 16
+  \end{minipage}}
+  \caption{Null-fraction heatmap (column $\times$ month) showing schema
+  drift. The June 2022 transition (singular $\rightarrow$ array fields) and
+  the August 2023 breakage are clearly visible.}
+  \label{fig:null-heatmap}
+\end{figure}
+
+\subsection{Identifying government advertising}
+
+To focus on third-party organisations the government advertising had to be
+removed. This included political-party advertisements and candidate
+advertisements. The 2022 House of Representatives and Senate candidate
+rolls were sourced from the Australian Electoral Commission. A straight
+join was not practical because page names can be misrepresentative and
+the byline can be paid by an aide. A pandas UDF was written instead,
+using Arrow to batch data between the JVM and Python workers for a 3 to
+10 times speed-up over a row-by-row UDF. The UDF applied three rules in
+order with the first match winning, summarised in Table~\ref{tab:match-rules}.
+
+\begin{table}[H]
+  \centering
+  \begin{tabularx}{\textwidth}{lX}
+    \toprule
+    \textbf{Rule} & \textbf{Logic and output} \\
+    \midrule
+    Candidate name
+      & The candidate's tokenised name (surname plus first given name)
+      is a subset of either the page-name tokens or the byline tokens.
+      Tagged as \texttt{candidate} with party from the AEC roll. \\
+    Party byline signature
+      & A tokenised party signature from \texttt{aec\_parties.csv} is a
+      subset of the byline tokens, e.g.\ $\{$liberal, national$\}
+      \rightarrow$ LNP. Signatures are tested longest-first so LNP
+      matches before LP. Tagged as \texttt{party\_org}. \\
+    Government byline signature
+      & The byline tokens contain one of $\{$department$\}$,
+      $\{$australian, government$\}$, or $\{$australian, electoral,
+      commission$\}$. Tagged as \texttt{government}.
+      $\{$commonwealth$\}$ was excluded to avoid collisions with
+      Commonwealth Bank. \\
+    \bottomrule
+  \end{tabularx}
+  \caption{Three rules applied by the byline-matching pandas UDF in order,
+  first match wins.}
+  \label{tab:match-rules}
+\end{table}
+
+Every ad ended up tagged with a \texttt{match\_type} (\texttt{candidate},
+\texttt{party\_org}, \texttt{government}, or \texttt{null}) and a
+\texttt{political\_party} code where applicable. The row counts are shown
+in Table~\ref{tab:match-counts}. Rows with \texttt{match\_type = null}
+were the non-government residual required for the third-party analysis.
+
+\begin{table}[H]
+  \centering
+  \begin{tabular}{lrr}
+    \toprule
+    \textbf{match\_type} & \textbf{total rows} & \textbf{unique ads}\\
+    \midrule
+    null         & 4{,}511{,}742 & 105{,}814 \\
+    party\_org   & 649{,}857     & 23{,}932  \\
+    candidate    & 536{,}232     & 20{,}644  \\
+    government   & 98{,}660      & 1{,}188   \\
+    \bottomrule
+  \end{tabular}
+  \caption{Rows and unique ads after government, party, and candidate
+  classification.}
+  \label{tab:match-counts}
+\end{table}
+
+\subsection{Removing commercial noise via LDA}
+
+The non-government residual still contained commercial noise. A natural
+language processing pipeline was built to remove it. The pipeline used
+Latent Dirichlet Allocation \cite{blei2003lda} to cluster the residual ads
+into topic groups based on the ad text body. LDA was selected because it
+is unsupervised. There were no labelled examples to train on, and LDA
+scales well on Spark MLlib. Text was lowercased, regex-tokenised,
+stop-words removed, and vectorised with a \texttt{CountVectorizer}
+(\texttt{minDF}=100, \texttt{maxDF}=0.3, \texttt{vocabSize}=5{,}000).
+After tuning the number of topics on a sample, $k = 20$ gave the cleanest
+separation. The resulting topics were hand-labelled with a fine label
+(e.g.\ \texttt{anti\_woodside\_petition}) and a coarse category
+(\texttt{climate}, \texttt{humanitarian\_rights},
+\texttt{political\_advocacy}, \texttt{cost\_of\_living}, or
+\texttt{noise}). Topics labelled \texttt{noise} were dropped. The result
+was a corpus of about 95{,}000 advocacy ads, written partitioned by
+category for selective downstream reads.
+
+\subsection{Temporal analysis: persistence and centroid bands}
+
+The temporal analysis characterised how each advertiser's spending related
+to the election. Advertisers were ranked by pre-election spend and the top
+20 retained for detailed inspection. Spending was aggregated into a weekly
+time series per advertiser using \texttt{date\_trunc('week', ad\_creation\_date)}.
+
+The raw weekly series was bursty. Most advertisers buy media in short
+pulses, so any summary metric on raw weekly spend was leveraged by
+single-week spikes. A four-week centred rolling mean was applied per
+advertiser. A hard smoothing boundary was placed at election day, with
+the pre and post halves smoothed independently. This prevented a final
+pre-election spike from bleeding forward into post-election weeks and
+softening the cliff edge of advertisers that stopped at the election. The
+raw series was kept for plotting. Only the summary metrics used the
+smoothed series.
+
+Two metrics were computed per advertiser. Persistence was the ratio of
+post-election spend to pre-election spend. Centroid was the weighted-mean
+week from election day, where negative values indicate spending before the
+election and positive values indicate spending after.
+
+Two metrics were needed because persistence alone produced false
+positives. A campaign that trickled spend past election day, or one that
+advertised on unrelated topics after, both lifted persistence without
+indicating non-election alignment. Combining persistence with the centroid
+distinguished these cases.
+
+Advertisers were split into four bands as shown in Table~\ref{tab:bands}.
+The bands are also plotted on a quadrant in Figure~\ref{fig:quadrant-spend}.
+
+\begin{table}[H]
+  \centering
+  \begin{tabularx}{\textwidth}{lX}
+    \toprule
+    \textbf{Band} & \textbf{Rule} \\
+    \midrule
+    \texttt{election\_only} & persistence $<$ 0.30 and $|$centroid$|$ $\leq$ 16 weeks \\
+    \texttt{transitional}   & 0.30 $\leq$ persistence $\leq$ 0.80 \\
+    \texttt{ongoing}        & persistence $>$ 0.80 \\
+    \texttt{off\_campaign}  & persistence $<$ 0.30 and $|$centroid$|$ $>$ 16 weeks \\
+    \bottomrule
+  \end{tabularx}
+  \caption{Four-band classifier applied to top-20 advertisers.}
+  \label{tab:bands}
+\end{table}
+
+\begin{figure}[H]
+  \centering
+  \fbox{\begin{minipage}[c][0.4\textheight][c]{0.95\textwidth}
+    \centering\itshape\small
+    [Figure placeholder]\\[0.5em]
+    temporal-pattern quadrant, bubble area $\propto$ total spend\\
+    source: notebook 05, cell 17
+  \end{minipage}}
+  \caption{Temporal-pattern quadrant: spend imbalance (x) $\times$ centroid
+  timing (y), bubble area $\propto$ total spend, colour by band. Each
+  quadrant has a clear behavioural interpretation.}
+  \label{fig:quadrant-spend}
+\end{figure}
+
+\subsection{Content analysis: hashtag-supervised classifier}
+
+The temporal classifier cannot detect advertisers whose messaging pivoted
+to electoral themes while their spend remained steady. A content-based
+classifier was added to capture this. All hashtags were extracted from the
+residual corpus with a regex and counted by band. Two reference sets were
+hand-curated from the counts: about 210 political hashtags such as
+\texttt{\#federalelection} and \texttt{\#morrisonmustgo}, and about 286
+non-political hashtags such as \texttt{\#breakfreefromplastic} and
+\texttt{\#architecture}. Each ad's text was scanned for matches against
+both sets. Ads with exactly one match-type set were used as training labels:
+
+\begin{itemize}
+  \item Positive: at least one political hashtag and no non-political hashtag.
+  \item Negative: at least one non-political hashtag and no political hashtag.
+  \item Ambiguous or unlabelled ads were excluded from training but scored at inference.
+\end{itemize}
+
+The hashtags themselves were stripped from the text before vectorisation,
+so the model had to learn from the surrounding prose rather than the
+labels. A logistic-regression classifier was trained over TF-IDF features.
+Logistic regression is the standard choice for high-dimensional sparse
+text classification because tree ensembles underperform on sparse input
+\cite{joachims1998text,wang2012baselines}.
+
+The training set contained 2{,}693 positive ads from 273 bylines and
+5{,}262 negative ads from 306 bylines. Class diversity reduced the risk
+of advertiser-identity leakage. The held-out test AUC was 0.97 with 91\%
+precision and 87\% recall on the positive class. A leave-one-advertiser-out
+validation across the top 15 contributors gave an ad-weighted recall of
+0.66. The lower recall reflects climate-advocacy bylines whose prose
+overlaps with environmental campaigns in the negative class. Inspection
+of high-scoring no-hashtag ads showed the model correctly identified
+political content that the upstream filter had missed, including Family
+First Party and several state-election candidates.
+
+% =============================================================================
+\section{Discussion and Conclusions}
+% =============================================================================
+
+The non-party, non-government advocacy ecosystem on Facebook around the
+2022 election does not behave as a single block. The temporal classifier
+identifies four behavioural patterns.
+
+The \texttt{election\_only} band is the largest by count. It covers
+roughly half of the top 20 advertisers, including Smart Voting, Solutions
+for Australia, Advance Australia, the Australian Education Union, GetUp!,
+It's Not A Race, Chuffed.org, and Climate~200. These advertisers ramped
+up before the election and stopped immediately afterwards. Their
+cumulative spend curves elbow sharply at election day. Keyword analysis
+confirms that this group is dominated by election-specific language. This
+is the closest Australian analogue to US PAC-style temporal behaviour.
+
+The Australian Cyber Security Centre also appears in this band. It is a
+government agency and should have been removed by the government filter.
+Its byline reads ``Australian Cyber Security Centre'' and did not match
+any of the three government signatures used. This is a known limitation
+of signature-based government detection.
+
+The \texttt{transitional} band contains advertisers that tapered rather
+than stopping dead. The \texttt{ongoing} band contains year-round
+advocates whose post-election rate matches their pre-election rate.
+Greenpeace Australia dominates this tier at about \$1.5M of spend across
+the window. The \texttt{off\_campaign} band catches Shell's December 2021
+spike, which persistence alone would misclassify as election-only.
+
+The content classifier identifies a different signal. Among advertisers
+whose spend pattern looked steady, the content classifier reveals that
+some messaging pivoted toward electoral themes around polling day. The
+largest shifts are shown in Table~\ref{tab:pivot}.
+
+\begin{table}[H]
+  \centering
+  \begin{tabular}{lrrr}
+    \toprule
+    \textbf{Advertiser} & \textbf{Outside hot zone} & \textbf{Inside hot zone} & \textbf{Shift} \\
+    \midrule
+    Australian Christian Lobby      & 0.51 & 0.82 & $+0.31$ \\
+    Thrive By Five                  & 0.42 & 0.61 & $+0.19$ \\
+    Amnesty International Australia & 0.33 & 0.52 & $+0.19$ \\
+    M\'edecins Sans Fronti\`eres    & 0.29 & 0.41 & $+0.12$ \\
+    Australian Conservation Foundation & 0.30 & 0.40 & $+0.10$ \\
+    \bottomrule
+  \end{tabular}
+  \caption{Top advertisers ranked by content-score shift between the
+  outside-hot-zone and inside-hot-zone periods. A positive shift indicates
+  a content pivot toward electoral themes.}
+  \label{tab:pivot}
+\end{table}
+
+Greenpeace's content score dropped during the hot zone from 0.15 to 0.07.
+Their pre-election spending was focused on the Woodside gas campaign and
+not on electoral messaging. Climate~200's content score is high
+year-round at 0.77, so the hot-zone score of 0.81 shows no pivot because
+they were already maximally political.
+
+Neither metric alone separates the ecosystem cleanly. Temporal banding
+catches cliff-edge campaigners and off-cycle outliers but cannot detect
+content pivots in steady spenders. Content classification catches pivots
+but cannot speak to spend volume or timing concentration. Together they
+identify three patterns: PAC-style election-only campaigners visible to
+both methods, year-round advocates that pivot messaging during the
+campaign visible only to the content method, and year-round advocates
+that stay on issue visible only to the temporal method.
+
+The dataset scale justified PySpark. The 40-million-row deduplication via
+window functions, the LDA fit on the residual corpus, and the pandas UDF
+for byline matching all leveraged Spark-specific features. None of these
+would have fit on a workstation in reasonable time. Hand-curation
+outperformed automation at two junctures: the LDA topic labels and the
+hashtag reference sets. Both were short enough for human review but
+provided strong supervision signal for downstream automation.
+
+% =============================================================================
+\printbibliography
+% =============================================================================
+
+% =============================================================================
+\appendix
+\section{Code}
+% =============================================================================
+The full analysis pipeline is implemented in six Jupyter notebooks at
+\url{https://github.com/<USER>/FB_API} (replace with the actual URL).
+Each notebook is self-contained and writes its output as Parquet on HDFS or
+as CSV in the repository's \texttt{data/} directory.
+
+\begin{description}
+  \item[\texttt{01\_data\_loading.ipynb}] Raw JSON ingestion, schema
+  flattening, deduplication, window filtering, write of v1 Parquet.
+  \item[\texttt{02\_preprocessing.ipynb}] Candidate, party, and government
+  byline matching via pandas UDF; write of v2 Parquet.
+  \item[\texttt{03\_topics.ipynb}] LDA topic modelling, $k$ sweep, topic
+  inspection, output of \texttt{topic\_terms.csv} for hand-labelling.
+  \item[\texttt{04\_topic\_join.ipynb}] Join of hand-labelled topics onto
+  v2, filter to political-adjacent residual, write of v3 Parquet.
+  \item[\texttt{04b\_hashtag\_analysis.ipynb}] Regex extraction of hashtags
+  across v3, count by band, export of \texttt{data/hashtags.csv}.
+  \item[\texttt{05\_election\_spenders.ipynb}] Top-20 ranking, weekly
+  aggregation, election-boundary smoothing, persistence + centroid
+  computation, four-band classification, export of band CSVs and
+  visualisations.
+  \item[\texttt{06\_election\_content\_classifier.ipynb}] Hashtag-supervised
+  logistic-regression text classifier; FP / FN / LOO validation;
+  per-advertiser and per-week scoring; pivot-detection table.
+\end{description}
+
+Selected code excerpts follow.
+
+\subsection*{Election-boundary smoothing (nb 05)}
+\begin{lstlisting}[language=Python]
+# Hard smoothing boundary at election day --- pre and post halves
+# smoothed independently so cliff-edged advertisers do not bleed forward.
+weekly['is_post'] = weekly['week'] >= ELECTION_DATE
+weekly['spend_smooth'] = (weekly
+    .groupby(['bylines', 'is_post'])['spend']
+    .transform(lambda s: s.rolling(window=4, center=True, min_periods=1).mean()))
+\end{lstlisting}
+
+\subsection*{Hashtag-supervised labelling (nb 06)}
+\begin{lstlisting}[language=Python]
+pol_re = r'#(' + '|'.join(re.escape(t) for t in political_hashtags) + r')\b'
+non_re = r'#(' + '|'.join(re.escape(t) for t in non_political_hashtags) + r')\b'
+
+v3 = v3.withColumn('has_political_hashtag',     col('raw_text').rlike(pol_re))
+v3 = v3.withColumn('has_non_political_hashtag', col('raw_text').rlike(non_re))
+
+# Strip hashtags before vectorising --- model must learn from surrounding prose.
+v3 = v3.withColumn('text', regexp_replace(col('raw_text'), r'#\w+', ' '))
+
+labelled = v3.withColumn('label',
+    when( col('has_political_hashtag') & ~col('has_non_political_hashtag'), 1.0)
+    .when(~col('has_political_hashtag') &  col('has_non_political_hashtag'), 0.0)
+    .otherwise(None))
+\end{lstlisting}
+
+\end{document}

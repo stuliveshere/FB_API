@@ -157,6 +157,28 @@ derby.log
 # Claude Code workspace
 .claude/
 
+# LaTeX build artefacts
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.fdb_latexmk
+*.fls
+*.lof
+*.log
+*.lot
+*.out
+*.run.xml
+*.synctex.gz
+*.toc
+*.xdv
+*.idx
+*.ind
+*.ilg
+*.nav
+*.snm
+*.vrb
+
 # OS
 .DS_Store
 Thumbs.db
