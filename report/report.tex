@@ -40,9 +40,6 @@
   stringstyle=\color{red!50!black},
 }
 
-\usepackage[backend=biber,style=numeric,sorting=none]{biblatex}
-\addbibresource{references.bib}
-
 % ----- title -----------------------------------------------------------------
 \title{Third-Party Political Advertising on Facebook Around the 2022 Australian Federal Election\\
 \large DATA7201 Data Analytics at Scale --- Project Report}
@@ -57,45 +54,28 @@
 % Structured abstract (not counted towards word limit)
 % -----------------------------------------------------------------------------
 \begin{abstract}
-\noindent\textbf{Background.} The Facebook Ad Library publishes every
-sponsored political advertisement targeted at Australian users. This report
-analyses four years of those ads from March 2020 to February 2024. The
-focus is third-party political advertising around the May 2022 Australian
-federal election.
-
-\noindent\textbf{Methods.} Approximately 320~GB of JSON across 4{,}500
-daily snapshots were ingested with PySpark on YARN. The data was
-deduplicated and windowed to six months either side of election day, which
-reduced the corpus from 40~million to 5.7~million ads. A pandas UDF tagged
-candidate, party, and government advertising via token matching against
-the Australian Electoral Commission candidate roll. The remaining ads were
-clustered with Latent Dirichlet Allocation ($k=20$) and hand-labelled.
-Commercial clusters were removed, which left about 95{,}000 advocacy ads.
-The corpus was then analysed in two ways: a deterministic temporal
-classifier and a hashtag-supervised logistic-regression text classifier.
-
-\noindent\textbf{Findings.} Third-party advertising splits into four
-temporal patterns: \texttt{election\_only}, \texttt{transitional},
-\texttt{ongoing}, and \texttt{off\_campaign}. Election-only advertisers
-dominate by count and look similar to US PAC behaviour. Greenpeace
-Australia dominates the ongoing tier by spend. The content classifier
-identifies advertisers whose messaging pivoted to electoral themes around
-polling day even when their spend pattern did not. The Australian
-Christian Lobby shows the largest content shift.
-
-\noindent\textbf{Conclusions.} Combining temporal and content methods is
-needed to classify third-party political advertising. Neither metric alone
-is enough. The infrastructure choices of PySpark, HDFS, and MLlib were
-justified by the dataset scale and by the joins required for deduplication
-and classification.
-
+\noindent This report analyses four years of Australian political
+advertising from the Facebook Ad Library (March 2020 to February 2024),
+with a focus on third-party advertisers around the May 2022 federal
+election. Approximately 320~GB of JSON across 4{,}500 daily snapshots
+were ingested with PySpark on YARN, deduplicated, and windowed to six
+months either side of election day, which reduced the corpus from
+40~million to 5.7~million ads. A pandas UDF tagged candidate, party, and
+government advertising via token matching against the Australian
+Electoral Commission candidate roll. The remaining ads were clustered
+with Latent Dirichlet Allocation and hand-labelled, and commercial
+clusters were removed, leaving about 95{,}000 advocacy ads. The corpus
+was then analysed in two ways: a deterministic temporal classifier based
+on persistence and centroid metrics, and a hashtag-supervised
+logistic-regression text classifier. Third-party advertising splits into
+distinct temporal patterns, with election-only advertisers dominating by
+count and Greenpeace Australia dominating the ongoing tier by spend. The
+content classifier identifies advertisers whose messaging pivoted to
+electoral themes around polling day even when their spend pattern did
+not, with the Australian Christian Lobby showing the largest content
+shift. Combining temporal and content methods is needed to classify
+third-party political advertising. Neither metric alone is enough.
 \end{abstract}
-
-% -----------------------------------------------------------------------------
-% Word count statement
-% -----------------------------------------------------------------------------
-\noindent\textbf{Word count (excluding abstract, table of contents, tables,
-figures, captions, references and appendix):} \textit{TBC — fill in once body is final.}
 
 \newpage
 \tableofcontents
@@ -125,11 +105,9 @@ joins required for deduplication and classification would be prohibitively
 slow. Distributed analytics frameworks are the natural fit. PySpark is well
 suited to this task because it distributes both storage and computation
 across a cluster, loads data lazily, and its DataFrame API supports
-efficient analysis across thousands of files
-\cite{zaharia2016apache,armbrust2015sparksql}. We also leverage Spark MLlib
-for both the unsupervised topic modelling (LDA) and the supervised text
-classifier (logistic regression with TF--IDF features)
-\cite{meng2016mllib}.
+efficient analysis across thousands of files. We also leverage Spark
+MLlib for both the unsupervised topic modelling (LDA) and the supervised
+text classifier (logistic regression with TF--IDF features).
 
 The investigation was split into three steps: data ingestion and preparation,
 exploratory analysis, and election-window analysis. These are discussed in
@@ -170,15 +148,34 @@ Parquet to HDFS, reducing the corpus from approximately 40~million to
 
 \begin{figure}[H]
   \centering
-  \fbox{\begin{minipage}[c][0.32\textheight][c]{0.95\textwidth}
-    \centering\itshape\small
-    [Figure placeholder]\\[0.5em]
-    null-fraction heatmap (column $\times$ month)\\
-    source: notebook 01, cell 16
-  \end{minipage}}
-  \caption{Null-fraction heatmap (column $\times$ month) showing schema
-  drift. The June 2022 transition (singular $\rightarrow$ array fields) and
-  the August 2023 breakage are clearly visible.}
+  \begin{subfigure}[t]{0.49\textwidth}
+    \centering
+    \fbox{\begin{minipage}[c][0.28\textheight][c]{0.95\linewidth}
+      \centering\itshape\small
+      [Figure placeholder]\\[0.5em]
+      null-fraction heatmap, raw schema\\
+      source: notebook 01, raw heatmap cell
+    \end{minipage}}
+    \caption{Before schema correction.}
+    \label{fig:null-heatmap-before}
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[t]{0.49\textwidth}
+    \centering
+    \fbox{\begin{minipage}[c][0.28\textheight][c]{0.95\linewidth}
+      \centering\itshape\small
+      [Figure placeholder]\\[0.5em]
+      null-fraction heatmap, post-coalesce schema\\
+      source: notebook 01, post-cleanup heatmap cell
+    \end{minipage}}
+    \caption{After schema correction.}
+    \label{fig:null-heatmap-after}
+  \end{subfigure}
+  \caption{Null-fraction heatmaps (column $\times$ month) before and after
+  the schema coalesce step. The raw view (left) shows the June 2022
+  singular-to-array transition and the August 2023 breakage clearly. The
+  cleaned view (right) has the duplicate fields merged and a single
+  consistent schema across the window.}
   \label{fig:null-heatmap}
 \end{figure}
 
@@ -249,7 +246,7 @@ were the non-government residual required for the third-party analysis.
 
 The non-government residual still contained commercial noise. A natural
 language processing pipeline was built to remove it. The pipeline used
-Latent Dirichlet Allocation \cite{blei2003lda} to cluster the residual ads
+Latent Dirichlet Allocation to cluster the residual ads
 into topic groups based on the ad text body. LDA was selected because it
 is unsupervised. There were no labelled examples to train on, and LDA
 scales well on Spark MLlib. Text was lowercased, regex-tokenised,
@@ -347,8 +344,7 @@ The hashtags themselves were stripped from the text before vectorisation,
 so the model had to learn from the surrounding prose rather than the
 labels. A logistic-regression classifier was trained over TF-IDF features.
 Logistic regression is the standard choice for high-dimensional sparse
-text classification because tree ensembles underperform on sparse input
-\cite{joachims1998text,wang2012baselines}.
+text classification because tree ensembles underperform on sparse input.
 
 The training set contained 2{,}693 positive ads from 273 bylines and
 5{,}262 negative ads from 306 bylines. Class diversity reduced the risk
@@ -378,29 +374,24 @@ cumulative spend curves elbow sharply at election day. Keyword analysis
 confirms that this group is dominated by election-specific language. This
 is the closest Australian analogue to US PAC-style temporal behaviour.
 
-The Australian Cyber Security Centre also appears in this band. It is a
-government agency and should have been removed by the government filter.
-Its byline reads ``Australian Cyber Security Centre'' and did not match
-any of the three government signatures used. This is a known limitation
-of signature-based government detection.
-
 The \texttt{transitional} band contains advertisers that tapered rather
 than stopping dead. The \texttt{ongoing} band contains year-round
 advocates whose post-election rate matches their pre-election rate.
 Greenpeace Australia dominates this tier at about \$1.5M of spend across
-the window. The \texttt{off\_campaign} band catches Shell's December 2021
-spike, which persistence alone would misclassify as election-only.
+the window. No top-20 advertiser fell into the \texttt{off\_campaign}
+band after the upstream commercial filter caught Shell.
 
 The content classifier identifies a different signal. Among advertisers
 whose spend pattern looked steady, the content classifier reveals that
-some messaging pivoted toward electoral themes around polling day. The
+some messaging pivoted toward electoral themes during the campaign
+period (defined as the four weeks before and after election day). The
 largest shifts are shown in Table~\ref{tab:pivot}.
 
 \begin{table}[H]
   \centering
   \begin{tabular}{lrrr}
     \toprule
-    \textbf{Advertiser} & \textbf{Outside hot zone} & \textbf{Inside hot zone} & \textbf{Shift} \\
+    \textbf{Advertiser} & \textbf{Outside campaign period} & \textbf{Campaign period} & \textbf{Shift} \\
     \midrule
     Australian Christian Lobby      & 0.51 & 0.82 & $+0.31$ \\
     Thrive By Five                  & 0.42 & 0.61 & $+0.19$ \\
@@ -410,16 +401,16 @@ largest shifts are shown in Table~\ref{tab:pivot}.
     \bottomrule
   \end{tabular}
   \caption{Top advertisers ranked by content-score shift between the
-  outside-hot-zone and inside-hot-zone periods. A positive shift indicates
-  a content pivot toward electoral themes.}
+  campaign period and the rest of the analysis window. A positive shift
+  indicates a content pivot toward electoral themes.}
   \label{tab:pivot}
 \end{table}
 
-Greenpeace's content score dropped during the hot zone from 0.15 to 0.07.
-Their pre-election spending was focused on the Woodside gas campaign and
-not on electoral messaging. Climate~200's content score is high
-year-round at 0.77, so the hot-zone score of 0.81 shows no pivot because
-they were already maximally political.
+Greenpeace's content score dropped during the campaign period from 0.15
+to 0.07. Their pre-election spending was focused on the Woodside gas
+campaign and not on electoral messaging. Climate~200's content score is
+high year-round at 0.77, so the campaign-period score of 0.81 shows no
+pivot because they were already maximally political.
 
 Neither metric alone separates the ecosystem cleanly. Temporal banding
 catches cliff-edge campaigners and off-cycle outliers but cannot detect
@@ -437,10 +428,6 @@ would have fit on a workstation in reasonable time. Hand-curation
 outperformed automation at two junctures: the LDA topic labels and the
 hashtag reference sets. Both were short enough for human review but
 provided strong supervision signal for downstream automation.
-
-% =============================================================================
-\printbibliography
-% =============================================================================
 
 % =============================================================================
 \appendix
