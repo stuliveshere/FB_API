@@ -24,6 +24,7 @@ COMMERCIAL_BYLINES = {
     "SBS Mandarin中文普通话",
     "The Squiz",
     "Hair Cooki",
+    "Shell"
 }
 
 # english defaults plus URL fragments, contraction debris, and generic fillers.
@@ -35,7 +36,7 @@ DOMAIN_STOP_WORDS = [
     "help", "time", "like", "need", "make", "take", "people",
     "year", "years", "today", "also", "will", "can", "get",
     "see", "know", "one", "two", "new", "now", "us",
-    "click", "learn",
+    "click", "learn",'australia', 'australian', "2022"
 ]
 
 # LDA + CountVectorizer hyperparameters - picked from the k-sweep in 03_topics.ipynb.
@@ -51,27 +52,21 @@ TOP_BYLINES_N = 5
 
 def load_v2(spark: SparkSession, path: str) -> DataFrame:
     """
-    read the v2 parquet written by 02_preprocessing.py.
+    read the v2 parquet
     """
     return spark.read.parquet(path)
 
 
 def first_non_empty(col_name: str):
     """
-    spark expression - first non-null, non-empty element of an array
-    column. returns null if none. used to pull a real body string out of
-    multi-variant ads where creative_bodies[0] may be null but a later
-    element is real.
+    spark way to get the first non-null value of an array
     """
     return expr(f"filter({col_name}, x -> x is not null and length(x) > 0)[0]")
 
 
 def filter_to_residual_subset(df: DataFrame, commercial_bylines: set) -> DataFrame:
     """
-    keep one row per ad (ad_seq_no = 1), drop political-classified rows
-    (match_type IS NULL), drop confirmed non-english (keep ads where
-    languages is null OR explicitly tagged english), and drop bylines
-    we've explicitly tagged as commercial/non-political.
+    get the non-goverment, non-comercial, english language rows
     """
     return df.filter(
         (col("ad_seq_no") == 1)
@@ -83,11 +78,7 @@ def filter_to_residual_subset(df: DataFrame, commercial_bylines: set) -> DataFra
 
 def extract_body_text(df: DataFrame) -> DataFrame:
     """
-    pull the first non-empty body / description / title element out of the
-    array columns and stitch them with concat_ws into a single body string.
-    drop rows where every text field is empty - LDA cant deal with empty
-    docs. creative_link_captions is skipped, it's usually just a domain
-    name and adds noise.
+    combine title, description and body, for those cases where the body is an image etc
     """
     df = df.withColumn("body_text", first_non_empty("creative_bodies"))
     df = df.withColumn("desc_text", first_non_empty("creative_link_descs"))
@@ -108,13 +99,7 @@ def extract_body_text(df: DataFrame) -> DataFrame:
 
 def build_preprocessing_pipeline(stop_words: list) -> Pipeline:
     """
-    three stage pipeline. RegexTokenizer splits on non-word characters,
-    lowercases, drops single-char tokens. StopWordsRemover drops english
-    defaults plus our domain noise. CountVectorizer turns the token lists
-    into integer count vectors (LDA needs counts not TF-IDF). minDF=100
-    is tighter than default - squashes long-tail vocab used by individual
-    small advertisers, forces LDA to cluster on shared vocabulary.
-    maxDF=0.3 auto-strips terms appearing in more than 30 percent of ads.
+    three stage pipeline. 
     """
     tokenizer = RegexTokenizer(
         inputCol="body", outputCol="raw_tokens",
@@ -138,9 +123,7 @@ def build_preprocessing_pipeline(stop_words: list) -> Pipeline:
 
 def fit_preprocessing(corpus: DataFrame, pipeline: Pipeline):
     """
-    fit the preprocessing pipeline once and transform the corpus. cache
-    the result so the LDA fit doesnt re-run preprocessing. returns
-    (fitted_pipeline_model, features_df).
+    run prepro and cache
     """
     prep_model = pipeline.fit(corpus)
     features_df = prep_model.transform(corpus).cache()
@@ -149,9 +132,7 @@ def fit_preprocessing(corpus: DataFrame, pipeline: Pipeline):
 
 def fit_lda(features_df: DataFrame, k: int) -> "LDAModel":
     """
-    fit LDA at k topics on the cached features. seed is fixed so a re-run
-    gives the same topic layout - important for the labelling workflow
-    (topic ids would otherwise reshuffle and break the join in nb 04).
+    fit LDA using 20 topics
     """
     lda = LDA(featuresCol="features", k=k, maxIter=LDA_MAX_ITER, seed=SEED)
     return lda.fit(features_df)
@@ -159,9 +140,7 @@ def fit_lda(features_df: DataFrame, k: int) -> "LDAModel":
 
 def attach_topic_ids(lda_model, features_df: DataFrame) -> DataFrame:
     """
-    transform the corpus to attach the topicDistribution vector (length-k
-    probabilities per topic per ad) and topic_id (argmax of the distribution,
-    the dominant topic for each ad).
+    attach the LDA results back to the df
     """
     return (
         lda_model.transform(features_df)
@@ -172,9 +151,7 @@ def attach_topic_ids(lda_model, features_df: DataFrame) -> DataFrame:
 
 def compute_top_terms(lda_model, vocab: list) -> dict:
     """
-    for each topic, return its top TOP_TERMS_N words. describeTopics
-    returns term indices into the CountVectorizer vocabulary; we just
-    look them up.
+    get the top terms for each topic
     """
     rows = lda_model.describeTopics(maxTermsPerTopic=TOP_TERMS_N).collect()
     return {row.topic: [vocab[i] for i in row.termIndices] for row in rows}
@@ -182,9 +159,7 @@ def compute_top_terms(lda_model, vocab: list) -> dict:
 
 def compute_top_bylines(classified: DataFrame) -> dict:
     """
-    for each topic, return its top TOP_BYLINES_N bylines by ad count.
-    uses a window function rank server-side so we only collect the small
-    top-n result, not the full byline distribution.
+    get the top bylines for each topic
     """
     w = Window.partitionBy("topic_id").orderBy(desc("count"))
     rows = (
@@ -204,10 +179,7 @@ def compute_top_bylines(classified: DataFrame) -> dict:
 
 def write_topic_terms_csv(top_terms: dict, top_bylines: dict, path: str) -> None:
     """
-    write one row per topic with top_terms (space-separated), top_bylines
-    (pipe-separated), and an empty label column for the human to fill in
-    offline. the label csv is then read by nb 04 and joined back to the
-    intermediate parquet.
+    write out out to a csv so we can manually tag the topics
     """
     rows = []
     for tid in sorted(top_terms.keys()):
@@ -222,17 +194,14 @@ def write_topic_terms_csv(top_terms: dict, top_bylines: dict, path: str) -> None
 
 def drop_lda_intermediates(df: DataFrame) -> DataFrame:
     """
-    drop the big intermediate columns before the parquet write -
-    raw_tokens, tokens, and features are huge arrays/sparse vectors;
-    topic_array is the same info as topicDistribution already on the row.
+    clean up
     """
     return df.drop("raw_tokens", "tokens", "features", "topic_array")
 
 
 def write_intermediate(df: DataFrame, path: str) -> None:
     """
-    write the corpus + topic_id + topicDistribution. nb 04 reads this,
-    joins the human labels in topic_labels.csv, and writes the final v3.
+    write out the corpus with the topic labels etc so we dont need to re-run
     """
     df.write.parquet(path, mode="overwrite")
 
