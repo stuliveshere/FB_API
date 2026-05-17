@@ -63,8 +63,9 @@ months either side of election day, which reduced the corpus from
 40~million to 5.7~million ads. A pandas UDF tagged candidate, party, and
 government advertising via token matching against the Australian
 Electoral Commission candidate roll. The remaining ads were clustered
-with Latent Dirichlet Allocation and hand-labelled, and commercial
-clusters were removed, leaving about 95{,}000 advocacy ads. The corpus
+with Latent Dirichlet Allocation and hand-labelled by category, with
+topics lacking a single coherent theme tagged \texttt{mixed} and kept
+for downstream analysis, leaving about 95{,}000 advocacy ads. The corpus
 was then analysed in two ways: a deterministic temporal classifier based
 on persistence and centroid metrics, and a hashtag-supervised
 logistic-regression text classifier. Third-party advertising splits into
@@ -252,14 +253,16 @@ is unsupervised. There were no labelled examples to train on, and LDA
 scales well on Spark MLlib. Text was lowercased, regex-tokenised,
 stop-words removed, and vectorised with a \texttt{CountVectorizer}
 (\texttt{minDF}=100, \texttt{maxDF}=0.3, \texttt{vocabSize}=5{,}000).
-After tuning the number of topics on a sample, $k = 20$ gave the cleanest
+After tuning the number of topics on a sample, $k = 25$ gave the cleanest
 separation. The resulting topics were hand-labelled with a fine label
 (e.g.\ \texttt{anti\_woodside\_petition}) and a coarse category
 (\texttt{climate}, \texttt{humanitarian\_rights},
 \texttt{political\_advocacy}, \texttt{cost\_of\_living}, or
-\texttt{noise}). Topics labelled \texttt{noise} were dropped. The result
-was a corpus of about 95{,}000 advocacy ads, written partitioned by
-category for selective downstream reads.
+\texttt{mixed}). Topics without a single coherent theme were tagged
+\texttt{mixed} and kept in the corpus rather than dropped, so downstream
+analysis can choose whether to include them. The result was a corpus of
+about 95{,}000 advocacy ads, written partitioned by category for
+selective downstream reads.
 
 \subsection{Temporal analysis: persistence and centroid bands}
 
@@ -346,16 +349,19 @@ labels. A logistic-regression classifier was trained over TF-IDF features.
 Logistic regression is the standard choice for high-dimensional sparse
 text classification because tree ensembles underperform on sparse input.
 
-The training set contained 2{,}693 positive ads from 273 bylines and
-5{,}262 negative ads from 306 bylines. Class diversity reduced the risk
+The training set contained 2{,}599 positive ads from 259 bylines and
+5{,}262 negative ads from 303 bylines. Class diversity reduced the risk
 of advertiser-identity leakage. The held-out test AUC was 0.97 with 91\%
-precision and 87\% recall on the positive class. A leave-one-advertiser-out
+precision and 89\% recall on the positive class. A leave-one-advertiser-out
 validation across the top 15 contributors gave an ad-weighted recall of
-0.66. The lower recall reflects climate-advocacy bylines whose prose
-overlaps with environmental campaigns in the negative class. Inspection
-of high-scoring no-hashtag ads showed the model correctly identified
-political content that the upstream filter had missed, including Family
-First Party and several state-election candidates.
+0.61. Recall was 1.00 for several top contributors (ABC Friends, First
+Tier Media, the Australian Education Union's federal branch) but
+collapsed to zero for Australian Parents for Climate Action when held
+out, indicating the model leaned heavily on their specific vocabulary
+for that one byline. Inspection of high-scoring no-hashtag ads showed
+the model correctly identified political content that the upstream filter
+had missed, including Family First Party and several state-election
+candidates.
 
 % =============================================================================
 \section{Discussion and Conclusions}
@@ -366,20 +372,25 @@ The non-party, non-government advocacy ecosystem on Facebook around the
 identifies four behavioural patterns.
 
 The \texttt{election\_only} band is the largest by count. It covers
-roughly half of the top 20 advertisers, including Smart Voting, Solutions
-for Australia, Advance Australia, the Australian Education Union, GetUp!,
-It's Not A Race, Chuffed.org, and Climate~200. These advertisers ramped
-up before the election and stopped immediately afterwards. Their
-cumulative spend curves elbow sharply at election day. Keyword analysis
-confirms that this group is dominated by election-specific language. This
-is the closest Australian analogue to US PAC-style temporal behaviour.
+11 of the top 20 advertisers, including Smart Voting, Solutions for
+Australia, Advance Australia, the Australian Education Union, GetUp!,
+It's Not A Race, Chuffed.org, Climate~200, and ABC Friends. These
+advertisers ramped up before the election and stopped immediately
+afterwards. Their cumulative spend curves elbow sharply at election day.
+Keyword analysis confirms that this group is dominated by
+election-specific language. This is the closest Australian analogue to
+US PAC-style temporal behaviour.
 
 The \texttt{transitional} band contains advertisers that tapered rather
-than stopping dead. The \texttt{ongoing} band contains year-round
+than stopping dead. The \texttt{ongoing} band contains five year-round
 advocates whose post-election rate matches their pre-election rate.
 Greenpeace Australia dominates this tier at about \$1.5M of spend across
-the window. No top-20 advertiser fell into the \texttt{off\_campaign}
-band after the upstream commercial filter caught Shell.
+the window; the Australian Unions, Plan International Australia,
+M\'edecins Sans Fronti\`eres Australia, and Save the Children Australia
+each operate at roughly a third or less of Greenpeace's volume but
+maintain steady year-round messaging. No top-20 advertiser fell into the
+\texttt{off\_campaign} band, since Shell was filtered upstream as a
+byline-tagged commercial advertiser in notebook~02.
 
 The content classifier identifies a different signal. Among advertisers
 whose spend pattern looked steady, the content classifier reveals that
@@ -393,11 +404,11 @@ largest shifts are shown in Table~\ref{tab:pivot}.
     \toprule
     \textbf{Advertiser} & \textbf{Outside campaign period} & \textbf{Campaign period} & \textbf{Shift} \\
     \midrule
-    Australian Christian Lobby      & 0.51 & 0.82 & $+0.31$ \\
-    Thrive By Five                  & 0.42 & 0.61 & $+0.19$ \\
-    Amnesty International Australia & 0.33 & 0.52 & $+0.19$ \\
-    M\'edecins Sans Fronti\`eres    & 0.29 & 0.41 & $+0.12$ \\
-    Australian Conservation Foundation & 0.30 & 0.40 & $+0.10$ \\
+    Australian Christian Lobby      & 0.49 & 0.85 & $+0.35$ \\
+    Amnesty International Australia & 0.35 & 0.51 & $+0.16$ \\
+    M\'edecins Sans Fronti\`eres    & 0.22 & 0.35 & $+0.13$ \\
+    Australia for UNHCR             & 0.18 & 0.27 & $+0.09$ \\
+    Plan International Australia    & 0.23 & 0.31 & $+0.08$ \\
     \bottomrule
   \end{tabular}
   \caption{Top advertisers ranked by content-score shift between the
@@ -406,11 +417,17 @@ largest shifts are shown in Table~\ref{tab:pivot}.
   \label{tab:pivot}
 \end{table}
 
-Greenpeace's content score dropped during the campaign period from 0.15
-to 0.07. Their pre-election spending was focused on the Woodside gas
+Greenpeace's content score dropped during the campaign period from 0.18
+to 0.12. Their pre-election spending was focused on the Woodside gas
 campaign and not on electoral messaging. Climate~200's content score is
-high year-round at 0.77, so the campaign-period score of 0.81 shows no
-pivot because they were already maximally political.
+high year-round at 0.78, so the campaign-period score of 0.85 shows no
+pivot because they were already maximally political. Advance Australia's
+content score moved the opposite way --- 0.81 outside the campaign
+period versus 0.56 inside ($-0.25$). Their conservative culture-war
+messaging ramped up after the federal election rather than during it,
+which is consistent with the high-scoring Advance Australia ads dated
+October 2022 surfaced by the false-positive check (Victorian state
+campaign and pre-referendum content).
 
 Neither metric alone separates the ecosystem cleanly. Temporal banding
 catches cliff-edge campaigners and off-cycle outliers but cannot detect
