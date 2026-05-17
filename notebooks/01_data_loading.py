@@ -20,6 +20,11 @@ WINDOW_END = "2022-11-21"
 
 
 def load_raw(spark: SparkSession, path: str) -> DataFrame:
+    """
+    load the data from the raw jsons. include the filename in a column
+    snapshot_date. the date format changes a bit so the regex is designed
+    to handle that. 
+    """
     df = spark.read.json(path)
     df = df.withColumn("filename", input_file_name())
 
@@ -29,10 +34,14 @@ def load_raw(spark: SparkSession, path: str) -> DataFrame:
     dd = regexp_extract("filename", date_re, 3).cast("int")
     date_str = format_string("%d-%02d-%02d", yyyy, mm, dd)
 
-    return df.withColumn("snapshot_date", to_date(date_str, "yyyy-MM-dd"))
+    df = df.withColumn("snapshot_date", to_date(date_str, "yyyy-MM-dd"))
+    return df
 
 
 def cast_dates(df: DataFrame) -> DataFrame:
+    """
+    cast datetime strings to date types. 
+    """
     for src in ["ad_creation_time", "ad_delivery_start_time", "ad_delivery_stop_time"]:
         dst = src.replace("_time", "_date")
         df = df.withColumn(dst, to_date(substring(src, 1, 10), "yyyy-MM-dd"))
@@ -40,7 +49,10 @@ def cast_dates(df: DataFrame) -> DataFrame:
 
 
 def collapse_schema(df: DataFrame) -> DataFrame:
-    return df.select(
+    """
+    schema cleanup, based upon the analysis in notebook 01
+    """
+    df = df.select(
         "id",
         "page_id",
         "page_name",
@@ -63,13 +75,23 @@ def collapse_schema(df: DataFrame) -> DataFrame:
         "ad_snapshot_url",
         coalesce(col("bylines"), col("funding_entity")).alias("bylines"),
     )
+    return df
 
 
 def filter_election_window(df: DataFrame, start: str, end: str) -> DataFrame:
-    return df.filter((col("ad_creation_date") >= start) & (col("ad_creation_date") <= end))
+    """
+    limit data to 6 months before/after the 2022 federal election
+    """
+    df = df.filter((col("ad_creation_date") >= start) & (col("ad_creation_date") <= end))
+    return df
 
 
 def flatten_numeric_structs(df: DataFrame) -> DataFrame:
+    """
+    we have a couple of structs like spend that have a min
+    and max value as a string. this casts them to longs
+    then finds the average value. drops the originals.
+    """
     for parent, prefix in [
         ("spend", "spend"),
         ("impressions", "impressions"),
@@ -80,16 +102,22 @@ def flatten_numeric_structs(df: DataFrame) -> DataFrame:
         df = df.withColumn(f"{prefix}_lower_bound", lo)
         df = df.withColumn(f"{prefix}_upper_bound", hi)
         df = df.withColumn(f"{prefix}_mid", (lo + hi) / 2.0)
+        df = df.drop("spend", "impressions", "estimated_audience_size")
 
-    return df.drop("spend", "impressions", "estimated_audience_size")
+    return df
 
 
 def add_snapshot_sequence(df: DataFrame) -> DataFrame:
+    """window partition into ad id, then order by snapshot date,
+    latest first, then label them with row numbers. e.g. filter by ad_seq_no = 1
+    to get the deduped dataset, but at this stage we dont wipe the other rows
+    """
     w = Window.partitionBy("id").orderBy(col("snapshot_date").desc())
     return df.withColumn("ad_seq_no", row_number().over(w))
 
 
 def write_output(df: DataFrame, path: str) -> None:
+    """ write into parquet with 8 extents"""
     df.coalesce(8).write.parquet(path, mode="overwrite")
 
 
