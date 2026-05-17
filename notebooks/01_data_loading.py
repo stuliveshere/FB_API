@@ -64,9 +64,15 @@ def collapse_schema(df: DataFrame) -> DataFrame:
         coalesce(col("ad_creative_link_captions"), array(col("ad_creative_link_caption"))).alias("creative_link_captions"),
         coalesce(col("ad_creative_link_descriptions"), array(col("ad_creative_link_description"))).alias("creative_link_descs"),
         coalesce(col("ad_creative_link_titles"), array(col("ad_creative_link_title"))).alias("creative_link_titles"),
-        "impressions",
-        "spend",
-        "estimated_audience_size",
+        "spend_lower_bound",
+        "spend_upper_bound",
+        "spend_mid",
+        "impressions_lower_bound",
+        "impressions_upper_bound",
+        "impressions_mid",
+        "audience_size_lower_bound",
+        "audience_size_upper_bound",
+        "audience_size_mid",
         "currency",
         "languages",
         "publisher_platforms",
@@ -74,6 +80,7 @@ def collapse_schema(df: DataFrame) -> DataFrame:
         coalesce(col("delivery_by_region"), col("region_distribution")).alias("delivery_by_region"),
         "ad_snapshot_url",
         coalesce(col("bylines"), col("funding_entity")).alias("bylines"),
+        "ad_seq_no",
     )
     return df
 
@@ -92,18 +99,19 @@ def flatten_numeric_structs(df: DataFrame) -> DataFrame:
     and max value as a string. this casts them to longs
     then finds the average value. drops the originals.
     """
-    for parent, prefix in [
-        ("spend", "spend"),
-        ("impressions", "impressions"),
-        ("estimated_audience_size", "audience_size"),
-    ]:
-        lo = col(f"{parent}.lower_bound").cast("long")
-        hi = col(f"{parent}.upper_bound").cast("long")
-        df = df.withColumn(f"{prefix}_lower_bound", lo)
-        df = df.withColumn(f"{prefix}_upper_bound", hi)
-        df = df.withColumn(f"{prefix}_mid", (lo + hi) / 2.0)
-        df = df.drop("spend", "impressions", "estimated_audience_size")
+    df = df.withColumn("spend_lower_bound", col("spend.lower_bound").cast("long"))
+    df = df.withColumn("spend_upper_bound", col("spend.upper_bound").cast("long"))
+    df = df.withColumn("spend_mid", (col("spend_lower_bound") + col("spend_upper_bound")) / 2.0)
 
+    df = df.withColumn("impressions_lower_bound", col("impressions.lower_bound").cast("long"))
+    df = df.withColumn("impressions_upper_bound", col("impressions.upper_bound").cast("long"))
+    df = df.withColumn("impressions_mid", (col("impressions_lower_bound") + col("impressions_upper_bound")) / 2.0)
+
+    df = df.withColumn("audience_size_lower_bound", col("estimated_audience_size.lower_bound").cast("long"))
+    df = df.withColumn("audience_size_upper_bound", col("estimated_audience_size.upper_bound").cast("long"))
+    df = df.withColumn("audience_size_mid", (col("audience_size_lower_bound") + col("audience_size_upper_bound")) / 2.0)
+
+    df = df.drop("spend", "impressions", "estimated_audience_size")
     return df
 
 
@@ -132,10 +140,10 @@ def main() -> None:
 
     df = load_raw(spark, RAW_PATH)
     df = cast_dates(df)
-    df = collapse_schema(df)
     df = filter_election_window(df, WINDOW_START, WINDOW_END)
     df = flatten_numeric_structs(df)
     df = add_snapshot_sequence(df)
+    df = collapse_schema(df)
     write_output(df, PARQUET_PATH)
 
     spark.stop()
