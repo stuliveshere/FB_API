@@ -40,7 +40,7 @@ DOMAIN_STOP_WORDS = [
 ]
 
 # LDA + CountVectorizer hyperparameters - picked from the k-sweep in 03_topics.ipynb.
-K = 25
+K = 25 #upped to 25 as we removed noise labels. TBH i'm not even sure if LDA is neccessary any more - our subsequent metrics should work either way
 VOCAB_SIZE = 5000
 MIN_DF = 100
 MAX_DF = 0.3
