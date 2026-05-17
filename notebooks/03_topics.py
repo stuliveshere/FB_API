@@ -40,7 +40,7 @@ DOMAIN_STOP_WORDS = [
 ]
 
 # LDA + CountVectorizer hyperparameters - picked from the k-sweep in 03_topics.ipynb.
-K = 20
+K = 25
 VOCAB_SIZE = 5000
 MIN_DF = 100
 MAX_DF = 0.3
