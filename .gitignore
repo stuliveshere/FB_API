@@ -182,3 +182,6 @@ derby.log
 # OS
 .DS_Store
 Thumbs.db
+
+# Generated notebook PDFs (produced by scripts/notebooks_to_pdf.{ps1,sh})
+notebooks/pdf/
