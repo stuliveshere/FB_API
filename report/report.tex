@@ -31,6 +31,8 @@
 \usepackage{natbib}
 \bibliographystyle{chicago}
 
+\usepackage{pdfpages}
+
 \usepackage{listings}
 \usepackage{xcolor}
 \lstset{
@@ -365,58 +367,51 @@ Claude (Anthropic; \texttt{claude-opus-4-7}, accessed via the Claude Code CLI be
 % =============================================================================
 \section{Code}
 % =============================================================================
-The full analysis pipeline is implemented in six Jupyter notebooks at
-\url{https://github.com/<USER>/FB_API} (replace with the actual URL).
-Each notebook is self-contained and writes its output as Parquet on HDFS or
-as CSV in the repository's \texttt{data/} directory.
+Python scripts contain the PySpark code that generates each intermediate output. Notebooks contain exploratory code, validation and QC, and plotting code.
 
-\begin{description}
-  \item[\texttt{01\_data\_loading.ipynb}] Raw JSON ingestion, schema
-  flattening, deduplication, window filtering, write of v1 Parquet.
-  \item[\texttt{02\_preprocessing.ipynb}] Candidate, party, and government
-  byline matching via pandas UDF; write of v2 Parquet.
-  \item[\texttt{03\_topics.ipynb}] LDA topic modelling, $k$ sweep, topic
-  inspection, output of \texttt{topic\_terms.csv} for hand-labelling.
-  \item[\texttt{04\_topic\_join.ipynb}] Join of hand-labelled topics onto
-  v2, filter to political-adjacent residual, write of v3 Parquet.
-  \item[\texttt{04b\_hashtag\_analysis.ipynb}] Regex extraction of hashtags
-  across v3, count by band, export of \texttt{data/hashtags.csv}.
-  \item[\texttt{05\_election\_spenders.ipynb}] Top-20 ranking, weekly
-  aggregation, election-boundary smoothing, persistence + centroid
-  computation, four-band classification, export of band CSVs and
-  visualisations.
-  \item[\texttt{06\_election\_content\_classifier.ipynb}] Hashtag-supervised
-  logistic-regression text classifier; FP / FN / LOO validation;
-  per-advertiser and per-week scoring; pivot-detection table.
-\end{description}
+\subsection*{Python scripts}
 
-Selected code excerpts follow.
+\lstinputlisting[language=Python,caption={\texttt{01\_data\_loading.py}}]{../notebooks/01_data_loading.py}
+\lstinputlisting[language=Python,caption={\texttt{02\_preprocessing.py}}]{../notebooks/02_preprocessing.py}
+\lstinputlisting[language=Python,caption={\texttt{03\_topics.py}}]{../notebooks/03_topics.py}
+\lstinputlisting[language=Python,caption={\texttt{04\_topic\_join.py}}]{../notebooks/04_topic_join.py}
 
-\subsection*{Election-boundary smoothing (nb 05)}
-\begin{lstlisting}[language=Python]
-# Hard smoothing boundary at election day --- pre and post halves
-# smoothed independently so cliff-edged advertisers do not bleed forward.
-weekly['is_post'] = weekly['week'] >= ELECTION_DATE
-weekly['spend_smooth'] = (weekly
-    .groupby(['bylines', 'is_post'])['spend']
-    .transform(lambda s: s.rolling(window=4, center=True, min_periods=1).mean()))
-\end{lstlisting}
+\subsection*{Notebooks}
 
-\subsection*{Hashtag-supervised labelling (nb 06)}
-\begin{lstlisting}[language=Python]
-pol_re = r'#(' + '|'.join(re.escape(t) for t in political_hashtags) + r')\b'
-non_re = r'#(' + '|'.join(re.escape(t) for t in non_political_hashtags) + r')\b'
+\subsubsection*{\texttt{01\_5\_senate\_party\_codes.ipynb}}
+\addcontentsline{toc}{subsubsection}{\texttt{01\_5\_senate\_party\_codes.ipynb}}
+\includepdf[pages=-,pagecommand={\thispagestyle{plain}}]{../notebooks/pdf/01_5_senate_party_codes.pdf}
 
-v3 = v3.withColumn('has_political_hashtag',     col('raw_text').rlike(pol_re))
-v3 = v3.withColumn('has_non_political_hashtag', col('raw_text').rlike(non_re))
+\subsubsection*{\texttt{01\_data\_loading.ipynb}}
+\addcontentsline{toc}{subsubsection}{\texttt{01\_data\_loading.ipynb}}
+\includepdf[pages=-,pagecommand={\thispagestyle{plain}}]{../notebooks/pdf/01_data_loading.pdf}
 
-# Strip hashtags before vectorising --- model must learn from surrounding prose.
-v3 = v3.withColumn('text', regexp_replace(col('raw_text'), r'#\w+', ' '))
+\subsubsection*{\texttt{02\_preprocessing.ipynb}}
+\addcontentsline{toc}{subsubsection}{\texttt{02\_preprocessing.ipynb}}
+\includepdf[pages=-,pagecommand={\thispagestyle{plain}}]{../notebooks/pdf/02_preprocessing.pdf}
 
-labelled = v3.withColumn('label',
-    when( col('has_political_hashtag') & ~col('has_non_political_hashtag'), 1.0)
-    .when(~col('has_political_hashtag') &  col('has_non_political_hashtag'), 0.0)
-    .otherwise(None))
-\end{lstlisting}
+\subsubsection*{\texttt{03\_topics.ipynb}}
+\addcontentsline{toc}{subsubsection}{\texttt{03\_topics.ipynb}}
+\includepdf[pages=-,pagecommand={\thispagestyle{plain}}]{../notebooks/pdf/03_topics.pdf}
+
+\subsubsection*{\texttt{04\_topic\_join.ipynb}}
+\addcontentsline{toc}{subsubsection}{\texttt{04\_topic\_join.ipynb}}
+\includepdf[pages=-,pagecommand={\thispagestyle{plain}}]{../notebooks/pdf/04_topic_join.pdf}
+
+\subsubsection*{\texttt{04b\_hashtag\_analysis.ipynb}}
+\addcontentsline{toc}{subsubsection}{\texttt{04b\_hashtag\_analysis.ipynb}}
+\includepdf[pages=-,pagecommand={\thispagestyle{plain}}]{../notebooks/pdf/04b_hashtag_analysis.pdf}
+
+\subsubsection*{\texttt{05\_election\_spenders.ipynb}}
+\addcontentsline{toc}{subsubsection}{\texttt{05\_election\_spenders.ipynb}}
+\includepdf[pages=-,pagecommand={\thispagestyle{plain}}]{../notebooks/pdf/05_election_spenders.pdf}
+
+\subsubsection*{\texttt{06\_election\_content\_classifier.ipynb}}
+\addcontentsline{toc}{subsubsection}{\texttt{06\_election\_content\_classifier.ipynb}}
+\includepdf[pages=-,pagecommand={\thispagestyle{plain}}]{../notebooks/pdf/06_election_content_classifier.pdf}
+
+\subsubsection*{\texttt{07\_top\_ads\_per\_advertiser.ipynb}}
+\addcontentsline{toc}{subsubsection}{\texttt{07\_top\_ads\_per\_advertiser.ipynb}}
+\includepdf[pages=-,pagecommand={\thispagestyle{plain}}]{../notebooks/pdf/07_top_ads_per_advertiser.pdf}
 
 \end{document}

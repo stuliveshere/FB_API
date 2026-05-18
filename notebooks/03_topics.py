@@ -21,7 +21,7 @@ COMMERCIAL_BYLINES = {
     "Streamotion Pty Ltd",
     "SBS Australia",
     "SBS Arabic24",
-    "SBS Mandarin中文普通话",
+    "SBS Mandarin\u4e2d\u6587\u666e\u901a\u8bdd",  # SBS Mandarin (Chinese)
     "The Squiz",
     "Hair Cooki",
     "Shell"
