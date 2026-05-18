@@ -28,6 +28,9 @@
   citecolor=blue!50!black,
 }
 
+\usepackage{natbib}
+\bibliographystyle{chicago}
+
 \usepackage{listings}
 \usepackage{xcolor}
 \lstset{
@@ -66,13 +69,43 @@ A number of advertisers were subsequently found who matched the PAC-style advert
 \tableofcontents
 \newpage
 
+\section*{Word Count}
+\addcontentsline{toc}{section}{Word Count}
+
+Per the assignment specification, the structured abstract, table of contents, captions, tables, and appendices are excluded from the word count. The body word count is \textbf{1{,}646 words}, broken down by section as shown in Table~\ref{tab:wordcount}.
+
+\begin{table}[H]
+  \centering
+  \begin{tabular}{lr}
+    \toprule
+    \textbf{Section} & \textbf{Words} \\
+    \midrule
+    Word Count (this section)                          & 40   \\
+    Introduction                                       & 206  \\
+    Data ingestion and preparation                     & 215  \\
+    Identifying government advertising                 & 126  \\
+    Topic clustering via LDA                           & 135  \\
+    Temporal analysis: persistence and centroid bands  & 230  \\
+    Content analysis: hashtag-supervised classifier    & 275  \\
+    Discussion and Conclusions                         & 364  \\
+    Section headers                                    & 55   \\
+    \midrule
+    \textbf{Total}                                     & \textbf{1{,}646} \\
+    \bottomrule
+  \end{tabular}
+  \caption{Word count breakdown produced by \texttt{texcount}.}
+  \label{tab:wordcount}
+\end{table}
+
+\newpage
+
 \section{Introduction}
 Political Action Committees (PACs) are an American campaigning vehicle that raise money for political advertising outside of the existing political structure. Australia does not formally have PACs. Yet independent, third-party advertisers spend millions of dollars on advertising during Australian elections. Identifying these informal Australian ``PACs'' is important for political-advertising transparency, and for finding the boundary between advertisers who are campaigning on specific issues and advertisers who are campaigning on behalf of political parties with private funding.
 
 The Facebook ad platform is attractive for advertisers as it provides access to a large viewer base with minimal effort. Traditional methods such as door-knocking and physical advertising are not required. The Facebook Ad Library is also a convenient data source for finding Australian PAC equivalents. A dataset was provided covering four years of political advertising in Australia, from 2020 to 2024. Although this corpus covered a range of political events, this report focuses on the 2022 Australian federal election.
 
 At approximately 320~GB of JSON files, the dataset cannot easily be analysed on a
-conventional workstation. A distributed analytics framework is required. PySpark was used for its lazy DataFrame API and Spark MLlib was used for both the unsupervised topic modelling (LDA) and the supervised text classifier (logistic regression).
+conventional workstation. A distributed analytics framework is required. PySpark \citep{zaharia2016apache} was used for its lazy DataFrame API \citep{armbrust2015sparksql}, and Spark MLlib \citep{meng2016mllib} was used for both the unsupervised topic modelling (LDA) and the supervised text classifier (logistic regression).
 
 
 \section{Dataset Analytics}
@@ -205,7 +238,7 @@ Every ad was thus tagged according to its nature; ads tagged \texttt{null} (no m
 
 \subsection{Topic clustering via LDA}
 
-The non-government component consisted of a range of topics, not all relevant to the election. Latent Dirichlet Allocation (LDA) was used to cluster these ads into topic groups based upon the ad text body. After tokenisation, stop-word removal and vectorisation with \texttt{CountVectorizer}, $k=25$ topics were fitted. $k$ was selected by tuning on a subset of the data. The topics were then hand-labelled with the categories \texttt{climate}, \texttt{humanitarian\_rights}, \texttt{political\_advocacy}, \texttt{cost\_of\_living}, and \texttt{mixed}.
+The non-government component consisted of a range of topics, not all relevant to the election. Latent Dirichlet Allocation \citep[LDA;][]{blei2003lda} was used to cluster these ads into topic groups based upon the ad text body. After tokenisation, stop-word removal and vectorisation with \texttt{CountVectorizer}, $k=25$ topics were fitted. $k$ was selected by tuning on a subset of the data. The topics were then hand-labelled with the categories \texttt{climate}, \texttt{humanitarian\_rights}, \texttt{political\_advocacy}, \texttt{cost\_of\_living}, and \texttt{mixed}.
 
 Topics without a single coherent theme were tagged as \texttt{mixed} and retained in the corpus, so downstream analysis could choose whether to include them. The result was a corpus of about 95{,}000 advocacy ads, written partitioned by category. The per-topic distribution is shown in Figure~\ref{fig:topics-count}. Of significant interest for this analysis, the largest spending bucket was the non-government \texttt{political\_advocacy} category.
 
@@ -275,7 +308,7 @@ Supervised classification requires a training corpus, and after some experimenta
   \item Ambiguous ads excluded from training but scored at inference.
 \end{itemize}
 
-Hashtags were stripped from the text prior to vectorisation so the model learned from the body. A logistic regression classifier was trained on 2{,}599 positive ads from 259 bylines and 5{,}262 negative ads from 303 bylines.
+Hashtags were stripped from the text prior to vectorisation so the model learned from the body. A logistic regression classifier, a standard approach for high-dimensional bag-of-words text classification \citep{manning2008iir}, was trained on 2{,}599 positive ads from 259 bylines and 5{,}262 negative ads from 303 bylines.
 
 Held-out test AUC was 0.97 (91\% precision, 89\% recall on the positive class). Leave-one-advertiser-out validation was run with a recall of 0.61, suggesting more advanced methods could improve coverage. Inspection of high-scoring no-hashtag ads confirmed the model caught political content the deterministic classification missed, including local-council and state-election candidates running outside the federal-election window.
 
@@ -329,6 +362,8 @@ The major outlier was Greenpeace. At \$1.5M it was the largest non-government ad
 Despite the limitations of the classifiers a reasonably confident list of Australian PAC-style advertisers can be identified from this dataset. Australia does not have formal PACs, but their informal equivalents do operate around federal elections. As discussed in the introduction, the boundary between issue advocacy and party-aligned third-party campaigning is one that traditional campaign-finance disclosure cannot easily examine. The combination of the Facebook Ad Library and the analytical methods demonstrated here may allow this boundary to be examined at a scale not previously available.
 
 The scale of the dataset meant that the analysis was only practical using a distributed framework. The 40-million-row, 320~GB JSON corpus could not have been deduplicated, clustered with LDA, or joined against the candidate roll on a conventional workstation in any reasonable time. Distributed storage, lazy DataFrame evaluation, and the Spark MLlib library were all used to make the full analysis viable.
+
+\bibliography{references}
 
 % =============================================================================
 \appendix
