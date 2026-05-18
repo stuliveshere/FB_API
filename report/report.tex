@@ -7,7 +7,7 @@
 \documentclass[11pt,a4paper]{article}
 
 % ----- packages -------------------------------------------------------------
-\usepackage[a4paper, margin=2.5cm]{geometry}
+\usepackage[a4paper, margin=1.5cm]{geometry}
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
 \usepackage{lmodern}
@@ -139,7 +139,7 @@ Deduplication was performed by sorting the snapshots chronologically per ad ID. 
   the schema coalesce step. The raw view (top) shows the June 2022
   singular-to-array transition and the August 2023 breakage clearly. The
   cleaned view (bottom) has the duplicate fields merged and a single
-  consistent schema across the window. Hot colors show a high percentage of 
+  consistent schema across the window. Hot colours show a high percentage of
   null values for that month/column.}
   \label{fig:null-heatmap}
 \end{figure}
@@ -233,7 +233,7 @@ Every ad was thus tagged according to its nature; ads tagged \texttt{null} (no m
 
 The non-government component contained a range of topics, not all of which were relevant to the election. The corpus was too large to label by hand and no pre-existing labels were available for supervised training. Latent Dirichlet Allocation \citep[LDA;][]{blei2003lda} is an unsupervised topic-clustering method which can group documents by latent themes without requiring training data. It was thus well suited to this corpus. After some standard text pre-processing, LDA was fitted with 25 topics. These topics were then hand-labelled with the categories \texttt{climate}, \texttt{humanitarian\_rights}, \texttt{political\_advocacy}, \texttt{cost\_of\_living} and \texttt{mixed}. This reduced the labelling problem from hundreds of thousands of ads down to just 25 topics.
 
-Topics without a single coherent theme were tagged as \texttt{mixed} and retained in the corpus, so downstream analysis could choose whether to include them. The result was a corpus of about 95{,}000 advocacy ads, written partitioned by category. The per-topic distribution is shown in Figure~\ref{fig:topics-count}. Notably the largest spending bucket was the non-government \texttt{political\_advocacy} category.
+Topics without a single coherent theme were tagged as \texttt{mixed} and retained in the corpus, so downstream analysis could choose whether to include them. The result was a corpus of about 95{,}000 non-government ads, written partitioned by category. The per-topic distribution is shown in Figure~\ref{fig:topics-count}. Notably the largest spending bucket was the \texttt{political\_advocacy} category.
 
 \begin{figure}[H]
   \centering
@@ -252,7 +252,7 @@ In order to compare advertisers, spending was collated into a weekly time series
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/non-government-weekly_spend.png}
-  \caption{Weekly spend across the non-government (advocacy) corpus.
+  \caption{Weekly spend across the non-government corpus.
   Spending clusters in the weeks leading up to the May 2022 election and
   drops sharply afterwards.}
   \label{fig:non-gov-weekly-spend}
@@ -283,9 +283,9 @@ Advertisers were split into four deterministic bands as shown in Table~\ref{tab:
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/band_scatter_spend.png}
-  \caption{Top 20 non-government advertisers by spend. Low persistance and centroid indicates
-  ongoing spend. Larger persistance and a strong negative centroid indicates 
-  an advertisiting spend focused on the pre-election period.}
+  \caption{Top 20 non-government advertisers by spend. Low persistence and centroid indicate
+  ongoing spend. Larger persistence and a strong negative centroid indicate
+  an advertising spend focused on the pre-election period.}
   \label{fig:quadrant-spend}
 \end{figure}
 
@@ -311,7 +311,7 @@ Per-advertiser scores were aggregated as the mean \texttt{election\_prob} across
   \centering
   \includegraphics[width=\linewidth]{figures/top_election_classified_in_preelection_spend_band.png}
   \caption{Mean \texttt{election\_prob} over the 4-week pre-election window
-  for the top-20 advocacy advertisers by spend, coloured by temporal
+  for the top-20 non-government advertisers by spend, coloured by temporal
   band. Bars longer than 0.5 indicate advertisers whose pre-election
   content reads as predominantly election-themed by the classifier.}
   \label{fig:content-bar}
@@ -324,7 +324,7 @@ Classifying PAC-style advertisers proved more challenging than anticipated. The 
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.85\linewidth]{figures/pac_likeness_scatter.png}
-  \caption{Combined PAC-likeness scatter: temporal classifier (\texttt{ec\_index}, x-axis) against content classifier (\texttt{mean\_prob\_pre}, y-axis) for the top-20 advocacy advertisers. The shaded top-right quadrant is the PAC region. Greenpeace sits in the bottom-left despite the largest bubble (\$1.5M).}
+  \caption{Combined PAC-likeness scatter: temporal classifier (\texttt{ec\_index}, x-axis) against content classifier (\texttt{mean\_prob\_pre}, y-axis) for the top-20 non-government advertisers. The shaded top-right quadrant is the PAC region. Greenpeace sits in the bottom centre despite the largest bubble (\$1.5M).}
   \label{fig:pac-scatter}
 \end{figure}
 
@@ -346,13 +346,13 @@ Nevertheless several PAC-style advertisers were identified. These included Smart
     ABC Friends                & election\_only & ``Save our ABC.'' \\
     \bottomrule
   \end{tabular}
-  \caption{Top PAC-style advertisers identified by the combined quadrant filter, with their highest-spend ad title. All combine pre-election spend concentration with explicit issue or party-directional messaging.}
+  \caption{Top PAC-style advertisers identified by the combined quadrant filter, with their highest-spend ad title. All combine pre-election spend concentration with content that was explicitly partisan or directed at a specific policy outcome.}
   \label{tab:top-pacs}
 \end{table}
 
 The major outlier was Greenpeace. At \$1.5M the largest non-government advertiser, it nevertheless satisfied none of the PAC criteria, with a fairly constant spend curve and an anti-Woodside Petroleum campaign rather than electoral content. High spend during an election window does not, on its own, indicate PAC-style behaviour.
 
-Despite the limitations of the classifiers a reasonably confident list of Australian PAC-style advertisers can be identified from this dataset. Australia does not have formal PACs, but their informal equivalents do operate around federal elections. As discussed in the introduction, the boundary between issue advocacy and party-aligned third-party campaigning is one that traditional campaign-finance disclosure cannot easily examine. The use of the Facebook Ad Library may be one method to allow this boundary to be examined.
+Despite the limitations of the classifiers a reasonably confident list of Australian PAC-style advertisers can be identified from this dataset. Australia does not have formal PACs, but their informal equivalents do operate around federal elections. As discussed in the introduction, the boundary between issue-based and party-aligned third-party campaigning is one that traditional campaign-finance disclosure cannot easily examine. The use of the Facebook Ad Library may be one method to allow this boundary to be examined.
 
 The scale of the dataset meant that the analysis was only practical using a distributed framework. The 40-million-row, 320~GB JSON corpus could not have been deduplicated, clustered with LDA, or joined against the candidate roll on a conventional workstation in any reasonable time. Distributed storage, lazy DataFrame evaluation, and the Spark MLlib library were all used to make the full analysis viable.
 
@@ -370,13 +370,26 @@ Claude (Anthropic; \texttt{claude-opus-4-7}, accessed via the Claude Code CLI be
 Python scripts contain the PySpark code that generates each intermediate output. Notebooks contain exploratory code, validation and QC, and plotting code.
 
 \subsection*{Python scripts}
+\addcontentsline{toc}{subsection}{Python scripts}
 
-\lstinputlisting[language=Python,caption={\texttt{01\_data\_loading.py}}]{../notebooks/01_data_loading.py}
-\lstinputlisting[language=Python,caption={\texttt{02\_preprocessing.py}}]{../notebooks/02_preprocessing.py}
-\lstinputlisting[language=Python,caption={\texttt{03\_topics.py}}]{../notebooks/03_topics.py}
-\lstinputlisting[language=Python,caption={\texttt{04\_topic\_join.py}}]{../notebooks/04_topic_join.py}
+\subsubsection*{\texttt{01\_data\_loading.py}}
+\addcontentsline{toc}{subsubsection}{\texttt{01\_data\_loading.py}}
+\lstinputlisting[language=Python]{../notebooks/01_data_loading.py}
+
+\subsubsection*{\texttt{02\_preprocessing.py}}
+\addcontentsline{toc}{subsubsection}{\texttt{02\_preprocessing.py}}
+\lstinputlisting[language=Python]{../notebooks/02_preprocessing.py}
+
+\subsubsection*{\texttt{03\_topics.py}}
+\addcontentsline{toc}{subsubsection}{\texttt{03\_topics.py}}
+\lstinputlisting[language=Python]{../notebooks/03_topics.py}
+
+\subsubsection*{\texttt{04\_topic\_join.py}}
+\addcontentsline{toc}{subsubsection}{\texttt{04\_topic\_join.py}}
+\lstinputlisting[language=Python]{../notebooks/04_topic_join.py}
 
 \subsection*{Notebooks}
+\addcontentsline{toc}{subsection}{Notebooks}
 
 \subsubsection*{\texttt{01\_5\_senate\_party\_codes.ipynb}}
 \addcontentsline{toc}{subsubsection}{\texttt{01\_5\_senate\_party\_codes.ipynb}}
