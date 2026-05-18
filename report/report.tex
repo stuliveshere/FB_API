@@ -284,7 +284,7 @@ Advertisers were split into four deterministic bands as shown in Table~\ref{tab:
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/band_scatter_spend.png}
-  \caption{Persistance vs Centroid Plot. Low persistance and centroid indicates
+  \caption{Top 20 non-government advertisers by spend. Low persistance and centroid indicates
   ongoing spend. Larger persistance and a strong negative centroid indicates 
   an advertisiting spend focused on the pre-election period.}
   \label{fig:quadrant-spend}
@@ -308,36 +308,85 @@ The held-out test AUC was 0.97 with 91\% precision and 89\% recall on the positi
 
 \section{Discussion and Conclusions}
 
-The non-party, non-government advocacy ecosystem on Facebook around the
-2022 election does not behave as a single block. The temporal classifier
-identifies four behavioural patterns.
+% -------- skeleton dot points (replace with prose) --------
+% Para 1 --- headline answer to the PAC question
+\begin{itemize}
+  \item Australia does have PAC-style advertisers around the May 2022
+  federal election. They are not a single homogeneous group --- two
+  distinct behavioural patterns emerge, alongside a third group of
+  year-round advocates that look PAC-like by spend volume alone but are
+  not.
+  \item Identifying both PAC patterns required combining temporal
+  evidence (when an advertiser spends) with content evidence (what their
+  ads say). Neither signal alone is sufficient.
+\end{itemize}
 
-The \texttt{election\_only} band is the largest by count. It covers
-11 of the top 20 advertisers, including Smart Voting, Solutions for
-Australia, Advance Australia, the Australian Education Union, GetUp!,
-It's Not A Race, Chuffed.org, Climate~200, and ABC Friends. These
-advertisers ramped up before the election and stopped immediately
-afterwards. Their cumulative spend curves elbow sharply at election day.
-Keyword analysis confirms that this group is dominated by
-election-specific language. This is the closest Australian analogue to
-US PAC-style temporal behaviour.
+% Para 2 --- Pattern A: classic election-window PACs
+\begin{itemize}
+  \item \textbf{Pattern A: election-window-only spenders.} Eleven of the
+  top-20 advertisers fall into the \texttt{election\_only} band ---
+  spend concentrates pre-election and drops to near zero afterwards.
+  \item Together they account for roughly 45\% of total advocacy spend
+  across the analysis window.
+  \item Named examples: Climate~200, Smart Voting, GetUp!, ABC Friends,
+  Solutions for Australia, Advance Australia, the Australian Education
+  Union, the Pharmacy Guild, It's Not A Race, Chuffed.org, and Amnesty
+  International Australia.
+  \item Climate~200 (the Holmes-\`a-Court donor pool for ``teal''
+  independents) is the closest structural analogue to a US Super PAC
+  identified in this analysis.
+\end{itemize}
 
-The \texttt{transitional} band contains advertisers that tapered rather
-than stopping dead. The \texttt{ongoing} band contains five year-round
-advocates whose post-election rate matches their pre-election rate.
-Greenpeace Australia dominates this tier at about \$1.5M of spend across
-the window; the Australian Unions, Plan International Australia,
-M\'edecins Sans Fronti\`eres Australia, and Save the Children Australia
-each operate at roughly a third or less of Greenpeace's volume but
-maintain steady year-round messaging. No top-20 advertiser fell into the
-\texttt{off\_campaign} band, since Shell was filtered upstream as a
-byline-tagged commercial advertiser in notebook~02.
+% Para 3 --- Pattern B: content pivots invisible to spend timing
+\begin{itemize}
+  \item \textbf{Pattern B: year-round spenders with content pivots.}
+  Surfaced only by the content classifier, this group has flat or
+  steady spend across the window but shifts content toward electoral
+  themes around polling day.
+  \item Australian Christian Lobby leads with the largest content shift
+  (\(+0.35\)), followed by M\'edecins Sans Fronti\`eres ($+0.13$),
+  Australia for UNHCR ($+0.09$), and Plan International Australia
+  ($+0.08$).
+  \item Significance: traditional campaign-finance reporting based on
+  declared spend totals misses this pattern entirely. The pivot is in
+  message, not money.
+  \item Counter-direction: Advance Australia shows a reverse pivot
+  ($-0.25$), with election-themed content peaking after the federal
+  election --- consistent with a switch to Victorian state and Voice
+  referendum messaging. This is independent evidence the classifier is
+  picking up election-specific vocabulary rather than generic campaign
+  activity.
+\end{itemize}
 
-The content classifier identifies a different signal. Among advertisers
-whose spend pattern looked steady, the content classifier reveals that
-some messaging pivoted toward electoral themes during the campaign
-period (defined as the four weeks before and after election day). The
-largest shifts are shown in Table~\ref{tab:pivot}.
+% Para 4 --- counterexample group (not PACs despite high spend)
+\begin{itemize}
+  \item \textbf{Counterexample: year-round single-issue advocates.}
+  Greenpeace Australia spent the most of any advocacy advertiser
+  (\$1.5M) but its content score actually dropped during the campaign
+  period (0.18~$\to$~0.12) --- they spent against the election window,
+  not at it. The campaign was anti-Woodside, not electoral.
+  \item Other steady-issue advertisers (Australian Unions, Plan
+  International, M\'edecins Sans Fronti\`eres, Save the Children) sit
+  in similar territory, and the combined classifier correctly
+  distinguishes them from PAC-style behaviour.
+\end{itemize}
+
+% Para 5 --- methodology and scale takeaways
+\begin{itemize}
+  \item The dataset scale (40~million rows, 320~GB JSON) justified
+  PySpark. The deduplication via window functions, the LDA fit on the
+  residual corpus, and the pandas UDF for byline matching all leveraged
+  Spark-specific features and would not have fit on a workstation in
+  reasonable time.
+  \item Hand-curation outperformed automation at two junctures: the LDA
+  topic labels and the hashtag reference sets. Both were small enough
+  for human review yet provided strong supervision signal to the
+  downstream classifiers.
+  \item Combined temporal+content detection generalises: any
+  jurisdiction with comparable ad-library transparency data could
+  replicate this methodology to surface its own PAC analogues.
+\end{itemize}
+% -------- end skeleton --------
 
 \begin{table}[H]
   \centering
@@ -357,35 +406,6 @@ largest shifts are shown in Table~\ref{tab:pivot}.
   indicates a content pivot toward electoral themes.}
   \label{tab:pivot}
 \end{table}
-
-Greenpeace's content score dropped during the campaign period from 0.18
-to 0.12. Their pre-election spending was focused on the Woodside gas
-campaign and not on electoral messaging. Climate~200's content score is
-high year-round at 0.78, so the campaign-period score of 0.85 shows no
-pivot because they were already maximally political. Advance Australia's
-content score moved the opposite way --- 0.81 outside the campaign
-period versus 0.56 inside ($-0.25$). Their conservative culture-war
-messaging ramped up after the federal election rather than during it,
-which is consistent with the high-scoring Advance Australia ads dated
-October 2022 surfaced by the false-positive check (Victorian state
-campaign and pre-referendum content).
-
-Neither metric alone separates the ecosystem cleanly. Temporal banding
-catches cliff-edge campaigners and off-cycle outliers but cannot detect
-content pivots in steady spenders. Content classification catches pivots
-but cannot speak to spend volume or timing concentration. Together they
-identify three patterns: PAC-style election-only campaigners visible to
-both methods, year-round advocates that pivot messaging during the
-campaign visible only to the content method, and year-round advocates
-that stay on issue visible only to the temporal method.
-
-The dataset scale justified PySpark. The 40-million-row deduplication via
-window functions, the LDA fit on the residual corpus, and the pandas UDF
-for byline matching all leveraged Spark-specific features. None of these
-would have fit on a workstation in reasonable time. Hand-curation
-outperformed automation at two junctures: the LDA topic labels and the
-hashtag reference sets. Both were short enough for human review but
-provided strong supervision signal for downstream automation.
 
 % =============================================================================
 \appendix
