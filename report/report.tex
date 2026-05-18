@@ -40,65 +40,36 @@
   stringstyle=\color{red!50!black},
 }
 
-% ----- title -----------------------------------------------------------------
-\title{Third-Party Political Advertising on Facebook Around the 2022 Australian Federal Election\\
-\large DATA7201 Data Analytics at Scale --- Project Report}
-\author{Student Number: s3348393}
+
+\title{DATA7201 Data Analytics at Scale - Project Report\\
+\small \emph{Examining Non-Government Aligned Election Spending}}
+\author{Stewart Fletcher \\ Student Number: s3348393}
 \date{\today}
 
-% =============================================================================
+
 \begin{document}
 \maketitle
 
-% -----------------------------------------------------------------------------
-% Structured abstract (not counted towards word limit)
-% -----------------------------------------------------------------------------
 \begin{abstract}
-\noindent This report analyses four years of Australian political
-advertising from the Facebook Ad Library (March 2020 to February 2024),
-with a focus on third-party advertisers around the May 2022 federal
-election. Approximately 320~GB of JSON across 4{,}500 daily snapshots
-were ingested with PySpark on YARN, deduplicated, and windowed to six
-months either side of election day, which reduced the corpus from
-40~million to 5.7~million ads. A pandas UDF tagged candidate, party, and
-government advertising via token matching against the Australian
-Electoral Commission candidate roll. The remaining ads were clustered
-with Latent Dirichlet Allocation and hand-labelled by category, with
-topics lacking a single coherent theme tagged \texttt{mixed} and kept
-for downstream analysis, leaving about 95{,}000 advocacy ads. The corpus
-was then analysed in two ways: a deterministic temporal classifier based
-on persistence and centroid metrics, and a hashtag-supervised
-logistic-regression text classifier. Third-party advertising splits into
-distinct temporal patterns, with election-only advertisers dominating by
-count and Greenpeace Australia dominating the ongoing tier by spend. The
-content classifier identifies advertisers whose messaging pivoted to
-electoral themes around polling day even when their spend pattern did
-not, with the Australian Christian Lobby showing the largest content
-shift. Combining temporal and content methods is needed to classify
-third-party political advertising. Neither metric alone is enough.
+\noindent This report examines non-government advertisers on the Facebook ad platform around the May 2022 federal election in order to determine the existence of American-style political action committee (PAC) advertisers in Australian elections. \\
+
+Facebook ad data surrounding the election was ingested and preprocessed using PySpark on YARN. A pandas UDF tagged candidate, party, and government advertising via token matching against the Australian Electoral Commission candidate roll. The remaining ads were clustered with Latent Dirichlet Allocation and hand-labelled by category to exclude non-political content. \\
+
+The corpus was then analysed in two ways: a deterministic classifier based upon ad spending before and after the election, and a machine learning classifier using hashtags to create a training dataset for a logistic-regression text classifier. Neither metric alone was sufficient to properly classify advertisers. \\
+
+Third-party advertising was found to be split into a number of distinct patterns, with political advertisers split into two groups: most or all of the ad spending before the election, or constant spending across the period with a pivot to election material before the election. \\
+
+A number of advertisers were subsequently found who matched the PAC-style advertisers seen in the United States, including Climate~200, Smart Voting, GetUp!, ABC Friends, and the Australian Christian Lobby.
 \end{abstract}
 
 \newpage
 \tableofcontents
 \newpage
 
-% =============================================================================
 \section{Introduction}
-% =============================================================================
-Winning elections requires reaching voters, and there are many ways to do this.
-Online advertising is attractive because it allows a message to reach a wide
-audience with minimal effort. Designing an ad, placing it online, and paying
-the bill is easier than traditional methods such as door-knocking or physical
-signage.
+Political Action Committees (PACs) are an American campaigning vehicle that raise money for political advertising outside of the existing political structure. Australia does not formally have PACs. Yet independent, third-party advertisers spend millions of dollars on advertising during Australian elections. Identifying these informal Australian ``PACs'' matters for political-advertising transparency, and for finding the boundary between advertisers who are campaigning on specific issues and advertisers who are campaigning on behalf of political parties with private funding.
 
-Political advertising is not limited to political parties. Third-party groups
-also participate in election campaigns, and studying digital advertising
-allows us to examine who these groups are, what they spend, and when they
-choose to spend it. The Facebook Ad Library API publishes every sponsored
-political post targeted at Australian users from March 2020 to February 2024,
-covering three major political events: the COVID-19 pandemic response, the
-May 2022 federal election, and the October 2023 Voice to Parliament
-referendum. This report focuses on the 2022 federal election.
+The Facebook ad platform is attractive for advertisers as it provides access to a large viewer base with minimal effort --- no door-knocking or physical advertising required. The Facebook Ad Library is also a convenient data source for answering this question. A dataset was provided covering four years of political advertising in Australia, from 2020 to 2024. Although this corpus covered a range of political events, this report focuses on the 2022 Australian federal election.
 
 At approximately 320~GB of JSON files, the dataset cannot be analysed on a
 conventional workstation. A single machine cannot hold it in memory, and the
@@ -108,15 +79,15 @@ suited to this task because it distributes both storage and computation
 across a cluster, loads data lazily, and its DataFrame API supports
 efficient analysis across thousands of files. We also leverage Spark
 MLlib for both the unsupervised topic modelling (LDA) and the supervised
-text classifier (logistic regression with TF--IDF features).
+text classifier (logistic regression).
 
 The investigation was split into three steps: data ingestion and preparation,
 exploratory analysis, and election-window analysis. These are discussed in
 the following sections.
 
-% =============================================================================
+
 \section{Dataset Analytics}
-% =============================================================================
+
 
 \subsection{Data ingestion and preparation}
 
@@ -124,18 +95,18 @@ The data consists of approximately 4{,}500 JSON files containing around 40
 million rows spanning February 2020 to March 2024. Each file is a snapshot of
 all Australian political advertisements active at that moment, so the same
 ad appears in multiple files. Each row represents a single ad with around 25
-columns covering the ad purchaser, Facebook page, creative text, spend, and
-impressions. The schema varies over time, with a notable change in
-June~2022 and another in August~2023; data becomes sparse after August~2023.
+columns covering the ad purchaser, Facebook page, creative text, spend, impressions and other metrics. 
+The schema varies over time, with a notable change in
+June~2022 and another in August~2023. Data becomes sparse in some key values after August~2023.
 
 A null-fraction analysis was performed to visualise the schema drift.
 Automatic schema inference collected the superset of all fields across the
 dataset, and the per-column null fraction by month was plotted as a heatmap
 (Figure~\ref{fig:null-heatmap}). Columns were then modified and merged to
-produce a consistent schema across the full date range. The numeric fields
+produce a consistent schema across the full date range. Various fields
 were stored as nested structs of string-typed lower and upper bounds; these
 were cast to numeric types and a midpoint was computed for each field,
-allowing downstream aggregations to work on a single value.
+allowing downstream processes to work on a single value.
 
 Deduplication was achieved by extracting the snapshot date from each
 filename and using it to sort snapshots chronologically, grouped by ad ID. A
@@ -149,47 +120,37 @@ Parquet to HDFS, reducing the corpus from approximately 40~million to
 
 \begin{figure}[H]
   \centering
-  \begin{subfigure}[t]{0.49\textwidth}
+  \begin{subfigure}[t]{\textwidth}
     \centering
-    \fbox{\begin{minipage}[c][0.28\textheight][c]{0.95\linewidth}
-      \centering\itshape\small
-      [Figure placeholder]\\[0.5em]
-      null-fraction heatmap, raw schema\\
-      source: notebook 01, raw heatmap cell
-    \end{minipage}}
+    \includegraphics[width=\linewidth]{figures/heatmap_before.png}
     \caption{Before schema correction.}
     \label{fig:null-heatmap-before}
   \end{subfigure}
-  \hfill
-  \begin{subfigure}[t]{0.49\textwidth}
+
+  \vspace{1em}
+  \begin{subfigure}[t]{\textwidth}
     \centering
-    \fbox{\begin{minipage}[c][0.28\textheight][c]{0.95\linewidth}
-      \centering\itshape\small
-      [Figure placeholder]\\[0.5em]
-      null-fraction heatmap, post-coalesce schema\\
-      source: notebook 01, post-cleanup heatmap cell
-    \end{minipage}}
+    \includegraphics[width=\linewidth]{figures/heatmap_after.png}
     \caption{After schema correction.}
     \label{fig:null-heatmap-after}
   \end{subfigure}
   \caption{Null-fraction heatmaps (column $\times$ month) before and after
-  the schema coalesce step. The raw view (left) shows the June 2022
+  the schema coalesce step. The raw view (top) shows the June 2022
   singular-to-array transition and the August 2023 breakage clearly. The
-  cleaned view (right) has the duplicate fields merged and a single
-  consistent schema across the window.}
+  cleaned view (bottom) has the duplicate fields merged and a single
+  consistent schema across the window. Hot colors show a high percentage of 
+  null values for that month/column.}
   \label{fig:null-heatmap}
 \end{figure}
-
+\newpage
 \subsection{Identifying government advertising}
 
 To focus on third-party organisations the government advertising had to be
-removed. This included political-party advertisements and candidate
+removed. This included both political-party advertisements and candidate
 advertisements. The 2022 House of Representatives and Senate candidate
 rolls were sourced from the Australian Electoral Commission. A straight
-join was not practical because page names can be misrepresentative and
-the byline can be paid by an aide. A pandas UDF was written instead,
-using Arrow to batch data between the JVM and Python workers for a 3 to
-10 times speed-up over a row-by-row UDF. The UDF applied three rules in
+join was not effective because page names can be misrepresentative and
+the byline can be paid by an aide. Thus a pandas UDF was used to apply three rules in
 order with the first match winning, summarised in Table~\ref{tab:match-rules}.
 
 \begin{table}[H]
@@ -200,19 +161,16 @@ order with the first match winning, summarised in Table~\ref{tab:match-rules}.
     \midrule
     Candidate name
       & The candidate's tokenised name (surname plus first given name)
-      is a subset of either the page-name tokens or the byline tokens.
-      Tagged as \texttt{candidate} with party from the AEC roll. \\
+      is a subset of either the page-name tokens or the byline tokens. \\
     Party byline signature
       & A tokenised party signature from \texttt{aec\_parties.csv} is a
       subset of the byline tokens, e.g.\ $\{$liberal, national$\}
       \rightarrow$ LNP. Signatures are tested longest-first so LNP
-      matches before LP. Tagged as \texttt{party\_org}. \\
+      matches before LP. \\
     Government byline signature
       & The byline tokens contain one of $\{$department$\}$,
       $\{$australian, government$\}$, or $\{$australian, electoral,
-      commission$\}$. Tagged as \texttt{government}.
-      $\{$commonwealth$\}$ was excluded to avoid collisions with
-      Commonwealth Bank. \\
+      commission$\}$. \\
     \bottomrule
   \end{tabularx}
   \caption{Three rules applied by the byline-matching pandas UDF in order,
@@ -220,11 +178,7 @@ order with the first match winning, summarised in Table~\ref{tab:match-rules}.
   \label{tab:match-rules}
 \end{table}
 
-Every ad ended up tagged with a \texttt{match\_type} (\texttt{candidate},
-\texttt{party\_org}, \texttt{government}, or \texttt{null}) and a
-\texttt{political\_party} code where applicable. The row counts are shown
-in Table~\ref{tab:match-counts}. Rows with \texttt{match\_type = null}
-were the non-government residual required for the third-party analysis.
+Every ad was thus tagged according to its nature; ads tagged \texttt{null} (no match against any of the three rules) formed the third-party corpus of interest. The row counts are shown in Table~\ref{tab:match-counts}, with the match-type composition visualised in Figure~\ref{fig:match-type-donuts} and the weekly spending pattern by match-type in Figure~\ref{fig:weekly-spend}.
 
 \begin{table}[H]
   \centering
@@ -243,57 +197,73 @@ were the non-government residual required for the third-party analysis.
   \label{tab:match-counts}
 \end{table}
 
-\subsection{Removing commercial noise via LDA}
+\begin{figure}[H]
+  \centering
+  \begin{subfigure}[t]{0.49\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{figures/ad_counts_donut.png}
+    \caption{All rows (per snapshot).}
+    \label{fig:match-type-donut-rows}
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[t]{0.49\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{figures/unqiue_count_donut.png}
+    \caption{Unique ads (\texttt{ad\_seq\_no}=1).}
+    \label{fig:match-type-donut-unique}
+  \end{subfigure}
+  \caption{Match-type distribution by total rows (left) and by unique
+  ads after deduplication (right). The \texttt{null} bucket dominates by
+  both measures and forms the third-party corpus carried forward.}
+  \label{fig:match-type-donuts}
+\end{figure}
 
-The non-government residual still contained commercial noise. A natural
-language processing pipeline was built to remove it. The pipeline used
-Latent Dirichlet Allocation to cluster the residual ads
-into topic groups based on the ad text body. LDA was selected because it
-is unsupervised. There were no labelled examples to train on, and LDA
-scales well on Spark MLlib. Text was lowercased, regex-tokenised,
-stop-words removed, and vectorised with a \texttt{CountVectorizer}
-(\texttt{minDF}=100, \texttt{maxDF}=0.3, \texttt{vocabSize}=5{,}000).
-After tuning the number of topics on a sample, $k = 25$ gave the cleanest
-separation. The resulting topics were hand-labelled with a fine label
-(e.g.\ \texttt{anti\_woodside\_petition}) and a coarse category
-(\texttt{climate}, \texttt{humanitarian\_rights},
-\texttt{political\_advocacy}, \texttt{cost\_of\_living}, or
-\texttt{mixed}). Topics without a single coherent theme were tagged
-\texttt{mixed} and kept in the corpus rather than dropped, so downstream
-analysis can choose whether to include them. The result was a corpus of
-about 95{,}000 advocacy ads, written partitioned by category for
-selective downstream reads.
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{figures/weekly_spend.png}
+  \caption{Weekly spend by match-type across the election window. The
+  candidate and party advertising spike around the May 2022 election as
+  expected; the \texttt{null} bucket shows a more diffuse pattern, which
+  motivates the topic-clustering step in the next subsection.}
+  \label{fig:weekly-spend}
+\end{figure}
+
+\subsection{Topic clustering via LDA}
+
+The non-government component consisted of a range of topics, not all relevant to the election. Latent Dirichlet Allocation (LDA) was used to cluster the non-government ads into topic groups based upon the ad text body. LDA is unsupervised, which was a significant advantage in a corpus of this size. Text was lowercased, tokenised, stop-words removed, and then vectorised using \texttt{CountVectorizer}. After tuning the number of topics $k$ on a subset of the data, $k=25$ was selected as it gave the cleanest separation. The topics were then hand-labelled with categories: \texttt{climate}, \texttt{humanitarian\_rights}, \texttt{political\_advocacy}, \texttt{cost\_of\_living}, and \texttt{mixed}.
+
+Topics without a single coherent theme were tagged as \texttt{mixed} and kept in the corpus rather than dropped, so downstream analysis can choose whether to include them. The result was a corpus of about 95{,}000 advocacy ads, written partitioned by category for selective downstream reads. The per-topic ad distribution is shown in Figure~\ref{fig:topics-count}.
+
+Of significant interest for this analysis, the largest spending bucket was the non-government \texttt{political\_advocacy} category.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{figures/topics_count.png}
+  \caption{Distribution of ads across the 25 LDA topics with the
+  hand-assigned categories.}
+  \label{fig:topics-count}
+\end{figure}
 
 \subsection{Temporal analysis: persistence and centroid bands}
 
-The temporal analysis characterised how each advertiser's spending related
-to the election. Advertisers were ranked by pre-election spend and the top
-20 retained for detailed inspection. Spending was aggregated into a weekly
-time series per advertiser using \texttt{date\_trunc('week', ad\_creation\_date)}.
+A simple method for identifying ``PAC''-style advertising is to look at spending before and after the election. An advertiser who has a high pre-election spending spike compared to the post-election period is more likely to be focused on the election.
 
-The raw weekly series was bursty. Most advertisers buy media in short
-pulses, so any summary metric on raw weekly spend was leveraged by
-single-week spikes. A four-week centred rolling mean was applied per
-advertiser. A hard smoothing boundary was placed at election day, with
-the pre and post halves smoothed independently. This prevented a final
-pre-election spike from bleeding forward into post-election weeks and
-softening the cliff edge of advertisers that stopped at the election. The
-raw series was kept for plotting. Only the summary metrics used the
-smoothed series.
+In order to compare advertisers, spending was collated into a weekly time series per advertiser. As the time series was very bursty, a four-week rolling mean was then applied. A hard boundary at the election date was added to prevent bleed over from the pre-election month into the post-election month. The resulting weekly pattern across the non-government corpus is shown in Figure~\ref{fig:non-gov-weekly-spend}.
 
-Two metrics were computed per advertiser. Persistence was the ratio of
-post-election spend to pre-election spend. Centroid was the weighted-mean
-week from election day, where negative values indicate spending before the
-election and positive values indicate spending after.
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{figures/non-government-weekly_spend.png}
+  \caption{Weekly spend across the non-government (advocacy) corpus.
+  Spending clusters in the weeks leading up to the May 2022 election and
+  drops sharply afterwards.}
+  \label{fig:non-gov-weekly-spend}
+\end{figure}
 
-Two metrics were needed because persistence alone produced false
-positives. A campaign that trickled spend past election day, or one that
-advertised on unrelated topics after, both lifted persistence without
-indicating non-election alignment. Combining persistence with the centroid
-distinguished these cases.
+A ratio of pre-election spend to post-election spend was calculated and saved as ``persistence''. Investigation of persistence found it was insufficient to identify strong pre-election spenders alone. Early-window spenders received the same weight as near-election spenders, and due to the crossover with the start of the Voice referendum, some political spenders had a late, post-election spend which reduced their ratio.
 
-Advertisers were split into four bands as shown in Table~\ref{tab:bands}.
-The bands are also plotted on a quadrant in Figure~\ref{fig:quadrant-spend}.
+A second metric was thus developed. ``Centroid'' was the weighted-mean week from election day, where negative values indicate spending before the election and positive values indicate spending after. Centroid was then combined with persistence to identify advertisers who focused their spend in the near pre-election period.
+
+Advertisers were split into four deterministic bands as shown in Table~\ref{tab:bands}. The bands are also plotted on a quadrant in Figure~\ref{fig:quadrant-spend}.
 
 \begin{table}[H]
   \centering
@@ -313,29 +283,18 @@ The bands are also plotted on a quadrant in Figure~\ref{fig:quadrant-spend}.
 
 \begin{figure}[H]
   \centering
-  \fbox{\begin{minipage}[c][0.4\textheight][c]{0.95\textwidth}
-    \centering\itshape\small
-    [Figure placeholder]\\[0.5em]
-    temporal-pattern quadrant, bubble area $\propto$ total spend\\
-    source: notebook 05, cell 17
-  \end{minipage}}
-  \caption{Temporal-pattern quadrant: spend imbalance (x) $\times$ centroid
-  timing (y), bubble area $\propto$ total spend, colour by band. Each
-  quadrant has a clear behavioural interpretation.}
+  \includegraphics[width=\linewidth]{figures/band_scatter_spend.png}
+  \caption{Persistance vs Centroid Plot. Low persistance and centroid indicates
+  ongoing spend. Larger persistance and a strong negative centroid indicates 
+  an advertisiting spend focused on the pre-election period.}
   \label{fig:quadrant-spend}
 \end{figure}
 
 \subsection{Content analysis: hashtag-supervised classifier}
 
-The temporal classifier cannot detect advertisers whose messaging pivoted
-to electoral themes while their spend remained steady. A content-based
-classifier was added to capture this. All hashtags were extracted from the
-residual corpus with a regex and counted by band. Two reference sets were
-hand-curated from the counts: about 210 political hashtags such as
-\texttt{\#federalelection} and \texttt{\#morrisonmustgo}, and about 286
-non-political hashtags such as \texttt{\#breakfreefromplastic} and
-\texttt{\#architecture}. Each ad's text was scanned for matches against
-both sets. Ads with exactly one match-type set were used as training labels:
+Focusing on spend has some disadvantages. Firstly, it may not identify issue-based advertising that is not election-focused but incidentally had higher spend prior to the election. Due to a spike in spending around Christmas this was noted for a few advertisers. Secondly, the focus on spend misses advertisers who have ongoing spend but, during the pre-election period, target their spend on the election. Thus a content-based classifier was used to capture this.
+
+Supervised classification requires a training corpus, and after some experiments, using hashtags was identified as a reliable method for extracting one. About 210 political hashtags such as \texttt{\#federalelection} and \texttt{\#morrisonmustgo} were extracted from the \texttt{election\_only} category, and about 286 non-political hashtags such as \texttt{\#breakfreefromplastic} and \texttt{\#architecture} were extracted from the \texttt{ongoing} category. These hashtags were then hand-curated to remove any obvious false positives. A training dataset was then built from the relevant ads such that
 
 \begin{itemize}
   \item Positive: at least one political hashtag and no non-political hashtag.
@@ -343,29 +302,11 @@ both sets. Ads with exactly one match-type set were used as training labels:
   \item Ambiguous or unlabelled ads were excluded from training but scored at inference.
 \end{itemize}
 
-The hashtags themselves were stripped from the text before vectorisation,
-so the model had to learn from the surrounding prose rather than the
-labels. A logistic-regression classifier was trained over TF-IDF features.
-Logistic regression is the standard choice for high-dimensional sparse
-text classification because tree ensembles underperform on sparse input.
+The hashtags were removed from the ad text prior to vectorisation so the model was forced to learn from the text body. A logistic regression classifier was then trained on this dataset. The training set contained 2{,}599 positive ads from 259 bylines and 5{,}262 negative ads from 303 bylines.
 
-The training set contained 2{,}599 positive ads from 259 bylines and
-5{,}262 negative ads from 303 bylines. Class diversity reduced the risk
-of advertiser-identity leakage. The held-out test AUC was 0.97 with 91\%
-precision and 89\% recall on the positive class. A leave-one-advertiser-out
-validation across the top 15 contributors gave an ad-weighted recall of
-0.61. Recall was 1.00 for several top contributors (ABC Friends, First
-Tier Media, the Australian Education Union's federal branch) but
-collapsed to zero for Australian Parents for Climate Action when held
-out, indicating the model leaned heavily on their specific vocabulary
-for that one byline. Inspection of high-scoring no-hashtag ads showed
-the model correctly identified political content that the upstream filter
-had missed, including Family First Party and several state-election
-candidates.
+The held-out test AUC was 0.97 with 91\% precision and 89\% recall on the positive class. A leave-one-advertiser-out validation across the top 15 contributors gave an ad-weighted recall of 0.61. This is not a strong score, and suggests more advanced methodologies may be warranted. However, inspection of high-scoring no-hashtag ads showed the model correctly identified political content that the deterministic classification had missed, including Family First Party and several state-election candidates.
 
-% =============================================================================
 \section{Discussion and Conclusions}
-% =============================================================================
 
 The non-party, non-government advocacy ecosystem on Facebook around the
 2022 election does not behave as a single block. The temporal classifier
@@ -448,6 +389,38 @@ provided strong supervision signal for downstream automation.
 
 % =============================================================================
 \appendix
+\section{Use of Generative AI}
+% =============================================================================
+Claude (Anthropic; the \texttt{claude-opus-4-7} model accessed via the
+Claude Code CLI between April and May 2026) was used as a proofreading
+and editing assistant and as a coding agent during the preparation of
+this project. Its use is described below.
+
+\begin{itemize}
+  \item \textbf{Writing.} The text of this report was written by the
+  author. Claude's role in the writing was limited to proofreading and
+  copy-editing: identifying typographical and grammatical errors,
+  suggesting minor wording refinements, and flagging inconsistencies
+  between paragraphs. All substantive content --- the framing of the
+  problem, the analytical argument, the choice of which findings to
+  highlight, and the structure and narrative of the report --- was
+  authored and decided by the student.
+  \item \textbf{Plotting.} Claude was primarily used as a teaching aide,
+  using an interactive session to query issues rather than a search engine. 
+  Claude directly assisted with parts of the matplotlib
+  visualisation code (donut charts, stacked-area plots, small multiples,
+  and the quadrant scatter plots in notebooks 02, 04 and 05). The
+  PySpark and pandas analysis pipeline was written by the author. All
+  visualisation code generated with Claude's assistance was reviewed,
+  tested, and integrated by the author.
+\end{itemize}
+
+The author retained responsibility for all analytical, code, and
+editorial decisions throughout, and verified the correctness of all
+code, numerical results, and claims before they were included in this
+report. Full conversation transcripts can be supplied on request.
+
+% =============================================================================
 \section{Code}
 % =============================================================================
 The full analysis pipeline is implemented in six Jupyter notebooks at
