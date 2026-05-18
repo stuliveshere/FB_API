@@ -328,10 +328,21 @@ The held-out test AUC was 0.97 with 91\% precision and 89\% recall on the positi
   spend concentrates pre-election and drops to near zero afterwards.
   \item Together they account for roughly 45\% of total advocacy spend
   across the analysis window.
-  \item Named examples: Climate~200, Smart Voting, GetUp!, ABC Friends,
-  Solutions for Australia, Advance Australia, the Australian Education
-  Union, the Pharmacy Guild, It's Not A Race, Chuffed.org, and Amnesty
-  International Australia.
+  \item Top 10 PAC-style advertisers by pre-election spend (all in the
+  \texttt{election\_only} band):
+    \begin{enumerate}
+      \item Amnesty International Australia (\$704k)
+      \item Solutions for Australia (\$589k)
+      \item Climate~200 (\$514k)
+      \item The Pharmacy Guild of Australia (\$335k)
+      \item Smart Voting (\$303k)
+      \item Australian Education Union (\$253k)
+      \item Advance Australia (\$250k)
+      \item It's Not A Race (\$222k)
+      \item GetUp! (\$183k)
+      \item Chuffed.org (\$171k)
+    \end{enumerate}
+    ABC Friends (\$146k) rounds out the band at \#11.
   \item Climate~200 (the Holmes-\`a-Court donor pool for ``teal''
   independents) is the closest structural analogue to a US Super PAC
   identified in this analysis.
@@ -371,7 +382,38 @@ The held-out test AUC was 0.97 with 91\% precision and 89\% recall on the positi
   distinguishes them from PAC-style behaviour.
 \end{itemize}
 
-% Para 5 --- methodology and scale takeaways
+% Para 5 --- notable cases and outliers (cross-cutting cases worth singling out)
+\begin{itemize}
+  \item \textbf{Notable cases and outliers.}
+  \begin{itemize}
+    \item \textbf{Greenpeace Australia} --- the largest single advocacy
+    spender in the dataset (\$1.5M) but \emph{not} a PAC. Steady
+    year-round spend and a content score that \emph{fell} during the
+    campaign period. The clearest counter-example: high spend during an
+    election window does not, on its own, indicate PAC behaviour.
+    \item \textbf{Amnesty International Australia} --- the only top-20
+    advertiser satisfying both detection criteria simultaneously
+    (election-window spend pattern \emph{and} positive content shift of
+    $+0.16$). The cleanest ``double-positive'' PAC case in the dataset.
+    \item \textbf{Advance Australia} --- election-window spend pattern
+    but a \emph{reverse} content pivot ($-0.25$). Spend timing alone
+    would classify them PAC-like; content analysis reveals their
+    messaging shifted toward Victorian state and Voice referendum
+    themes after the May federal election rather than during it.
+    \item \textbf{Climate~200} --- maximally political year-round
+    (election\_prob $\sim 0.78$ outside, $\sim 0.85$ inside). Their
+    small content shift reflects a ceiling effect rather than the
+    absence of PAC-like behaviour --- their entire portfolio is
+    electoral.
+    \item \textbf{The Pharmacy Guild of Australia} --- strong PAC-style
+    temporal pattern (\$335k pre-election, \$0 post-election) but
+    issue-specific content (prescription costs, ``Affordable Medicines
+    Now''). Illustrates that ``PAC-like'' is a spectrum that includes
+    single-issue lobbying timed to coincide with an election.
+  \end{itemize}
+\end{itemize}
+
+% Para 6 --- methodology and scale takeaways
 \begin{itemize}
   \item The dataset scale (40~million rows, 320~GB JSON) justified
   PySpark. The deduplication via window functions, the LDA fit on the
